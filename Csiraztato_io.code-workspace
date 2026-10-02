@@ -1,0 +1,39 @@
+{
+	"folders": [
+		{
+			"path": "../Csiraztato_io"
+		},
+		{
+			"name": "Gyerek_jatek_arduinomega",
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.tcc": "cpp",
+			"random": "cpp",
+			"functional": "cpp",
+			"limits": "cpp",
+			"ostream": "cpp",
+			"streambuf": "cpp",
+			"tuple": "cpp",
+			"bit": "cpp",
+			"set": "cpp",
+			"atomic": "cpp",
+			"cstdint": "cpp",
+			"cstdlib": "cpp",
+			"string": "cpp",
+			"exception": "cpp",
+			"memory_resource": "cpp",
+			"cmath": "cpp",
+			"new": "cpp",
+			"numeric": "cpp",
+			"ranges": "cpp",
+			"string_view": "cpp",
+			"type_traits": "cpp",
+			"typeinfo": "cpp",
+			"utility": "cpp",
+			"iosfwd": "cpp"
+		}
+	}
+}

@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../../../../Arduino/Sajat/Gyerek_jatek"
+		},
+		{
+			"name": "Gyerek_jatek_arduinomega",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
