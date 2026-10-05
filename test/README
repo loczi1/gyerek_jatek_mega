@@ -1,11 +1,8 @@
+Hardware-free regression tests live here.
 
-This directory is intended for PlatformIO Test Runner and project tests.
+The VS Code "Test Gyerek_jatek (no hardware)" task runs tools/run_tests.py.
+It executes Python project/configuration checks, compiles the real portable
+C++ game/music/LCD modules, then runs native/test_main.cpp on the host.
+These are host tests, not an Arduino upload or PlatformIO serial test run.
 
-Unit Testing is a software testing method by which individual units of
-source code, sets of one or more MCU program modules together with associated
-control data, usage procedures, and operating procedures, are tested to
-determine whether they are fit for use. Unit testing finds problems early
-in the development cycle.
-
-More information about PlatformIO Unit Testing:
-- https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+See the root README.md for compiler setup, coverage and hardware limitations.

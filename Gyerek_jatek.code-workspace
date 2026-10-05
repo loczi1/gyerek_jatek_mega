@@ -1,10 +1,7 @@
 {
 	"folders": [
 		{
-			"path": "../Csiraztato_io"
-		},
-		{
-			"name": "Gyerek_jatek_arduinomega",
+			"name": "Gyerek_jatek",
 			"path": "."
 		}
 	],

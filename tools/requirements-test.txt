@@ -1,0 +1,2 @@
+# Optional portable C++ compiler when g++/clang++ is not on PATH.
+ziglang==0.13.0

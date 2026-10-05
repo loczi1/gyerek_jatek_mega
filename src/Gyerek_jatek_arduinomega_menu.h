@@ -20,12 +20,12 @@
 #include <RuntimeMenuItem.h>
 #include <IoAbstraction.h>
 #include <EepromItemStorage.h>
-#include "tcMenuLiquidCrystal.h"
+#include "ui/SafeLiquidCrystalRenderer.h"
 
 // variables we declare that you may need to access
 extern const PROGMEM ConnectorLocalInfo applicationInfo;
 extern LiquidCrystal lcd;
-extern LiquidCrystalRenderer renderer;
+extern SafeLiquidCrystalRenderer renderer;
 
 // Any externals needed by IO expanders, EEPROMs etc
 
@@ -56,6 +56,7 @@ void CALLBACK_FUNCTION DigOut(int id);
 void CALLBACK_FUNCTION Gomb1(int id);
 void CALLBACK_FUNCTION Jatek(int id);
 void CALLBACK_FUNCTION Tesztelo(int id);
+void CALLBACK_FUNCTION Restart(int id);
 int fnNewRuntimeListRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);
 
 #endif // MENU_GENERATED_CODE_H

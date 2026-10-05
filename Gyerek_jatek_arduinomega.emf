@@ -1,6 +1,6 @@
 {
   "version": "1.00",
-  "projectName": "Project description",
+  "projectName": "Gyerek_jatek",
   "author": "Akos",
   "items": [
     {
@@ -24,7 +24,7 @@
       "defaultValue": "false",
       "item": {
         "naming": "TRUE_FALSE",
-        "name": "gomb1",
+        "name": "Input naplo",
         "variableName": "Gomb1",
         "id": 3,
         "eepromAddress": -1,
@@ -39,9 +39,9 @@
       "parentId": 0,
       "type": "runtimeList",
       "item": {
-        "initialRows": 10,
+        "initialRows": 7,
         "listCreationMode": "CUSTOM_RTCALL",
-        "name": "New Runtime List",
+        "name": "Bemenetek",
         "variableName": "NewRuntimeList",
         "id": 4,
         "eepromAddress": -1,
@@ -56,7 +56,9 @@
       "parentId": 0,
       "type": "actionMenu",
       "item": {
-        "name": "New ActionItem",
+        "name": "Ujrainditas",
+        "variableName": "NewActionItem",
+        "functionName": "Restart",
         "id": 5,
         "eepromAddress": -1,
         "readOnly": false,
@@ -72,7 +74,7 @@
       "item": {
         "enumEntries": [
           "Cyclon",
-          "Item2"
+          "Zene"
         ],
         "name": "Jatek",
         "variableName": "Jatek",
@@ -113,7 +115,7 @@
         "id": 8,
         "eepromAddress": -1,
         "functionName": "DigIn",
-        "readOnly": false,
+        "readOnly": true,
         "localOnly": false,
         "visible": true,
         "staticDataInRAM": false
@@ -131,7 +133,7 @@
         "id": 9,
         "eepromAddress": -1,
         "functionName": "AnIn",
-        "readOnly": false,
+        "readOnly": true,
         "localOnly": false,
         "visible": true,
         "staticDataInRAM": false
@@ -143,10 +145,10 @@
       "defaultValue": "0",
       "item": {
         "enumEntries": [
-          "test1",
-          "test2"
+          "OFF",
+          "ON"
         ],
-        "name": "DigOut",
+        "name": "D13 LED",
         "variableName": "DigOut",
         "id": 11,
         "eepromAddress": -1,
