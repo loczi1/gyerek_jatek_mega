@@ -3,23 +3,22 @@
 namespace app {
 
 bool ModeController::select(Mode mode, uint32_t now, bool buttonPressed) {
-    if (mode != Mode::Cyclone && mode != Mode::Music) return false;
+    if (mode != Mode::Cyclone && mode != Mode::Debug) return false;
     if (hasSelection_ && mode == mode_) return false;
 
-    // Release the effect's buzzer ownership before music can start.
+    // Debug must not play result sounds while inputs are being tested.
     soundEffects_.stop();
     mode_ = mode;
     hasSelection_ = true;
     game_.setEnabled(mode == Mode::Cyclone, now, buttonPressed);
-    music_.setEnabled(mode == Mode::Music, now);
     return true;
 }
 
 bool ModeController::restart(uint32_t now, bool buttonPressed) {
     if (!hasSelection_) return false;
     soundEffects_.stop();
-    if (mode_ == Mode::Cyclone) game_.restart(now, buttonPressed);
-    else music_.restart(now);
+    mode_ = Mode::Cyclone;
+    game_.restart(now, buttonPressed);
     return true;
 }
 
@@ -43,8 +42,7 @@ bool ModeController::update(uint32_t now, bool buttonPressed) {
 
 void ModeController::updateAudio(uint32_t now) {
     if (!hasSelection_) return;
-    if (mode_ == Mode::Music) music_.update(now);
-    else soundEffects_.update(now);
+    if (mode_ == Mode::Cyclone) soundEffects_.update(now);
 }
 
 } // namespace app

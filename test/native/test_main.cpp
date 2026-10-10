@@ -5,6 +5,8 @@
 #include "app/ModeController.h"
 #include "ui/LcdText.h"
 #include "test_audio.h"
+#include "test_debug.h"
+#include "test_input.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -376,40 +378,36 @@ void testMusicFinishesAndRestarts() {
 
 void testModeSelectionIsIdempotent() {
     game::CycloneGame game(pickTarget);
-    music::MusicPlayer player(playTone, stopTone);
     audio::SoundEffects effects(playTone, stopTone);
-    app::ModeController modes(game, player, effects);
+    app::ModeController modes(game, effects);
     CHECK(modes.select(app::Mode::Cyclone, 0, false));
     CHECK(!modes.select(app::Mode::Cyclone, 1, false));
     CHECK(game.state() == game::State::Idle);
-    CHECK(modes.select(app::Mode::Music, 2, false));
+    CHECK(modes.select(app::Mode::Debug, 2, false));
     CHECK(game.state() == game::State::Disabled);
-    CHECK(player.isPlaying());
     for (uint32_t i = 3; i < 1000; ++i)
-        CHECK(!modes.select(app::Mode::Music, i, false));
-    CHECK(tones == 1);
+        CHECK(!modes.select(app::Mode::Debug, i, false));
+    CHECK(tones == 0);
     CHECK(stops == 0);
     CHECK(modes.select(app::Mode::Cyclone, 1000, false));
-    CHECK(stops == 1);
-    CHECK(!player.isPlaying());
+    CHECK(stops == 0);
     CHECK(game.state() == game::State::Idle);
 }
 
 void testRepeatedModeChanges() {
     game::CycloneGame game(pickTarget);
-    music::MusicPlayer player(playTone, stopTone);
     audio::SoundEffects effects(playTone, stopTone);
-    app::ModeController modes(game, player, effects);
+    app::ModeController modes(game, effects);
     modes.select(app::Mode::Cyclone, 0, false);
     for (uint32_t i = 0; i < 500; ++i) {
-        CHECK(modes.select(app::Mode::Music, i * 2U + 1U, false));
+        CHECK(modes.select(app::Mode::Debug, i * 2U + 1U, false));
         CHECK(game.state() == game::State::Disabled);
         CHECK(modes.select(app::Mode::Cyclone, i * 2U + 2U, false));
         CHECK(game.state() == game::State::Idle);
-        CHECK(!player.isPlaying());
+        CHECK(!effects.isPlaying());
     }
-    CHECK(tones == 500);
-    CHECK(stops == 500);
+    CHECK(tones == 0);
+    CHECK(stops == 0);
     CHECK(!modes.select(static_cast<app::Mode>(99), 2000, false));
     CHECK(game.state() == game::State::Idle);
 }
@@ -544,6 +542,8 @@ int main() {
         printf("PASS: %s\n", test.name);
     }
     const size_t audioTests = runAudioTests();
-    printf("\n%zu native regression tests passed.\n", sizeof(Tests) / sizeof(Tests[0]) + audioTests);
+    const size_t debugTests = runDebugTests();
+    const size_t inputTests = runInputTests();
+    printf("\n%zu native regression tests passed.\n", sizeof(Tests) / sizeof(Tests[0]) + audioTests + debugTests + inputTests);
     return EXIT_SUCCESS;
 }

@@ -7,10 +7,16 @@
 namespace diagnostics {
 
 void begin();
-uint8_t pressedMask();
-void formatDigitalInputs(uint8_t mask, char* buffer, size_t capacity);
-void formatAnalogInput(char* buffer, size_t capacity);
-void setOutput(bool enabled);
+void setEnabled(bool enabled);
+void update();
+void setButtonTestEnabled(bool enabled, uint32_t now);
+bool updateButtons(uint32_t now);
+void formatButtonName(uint8_t row, char* buffer, size_t capacity);
+void formatButtonValue(uint8_t row, char* buffer, size_t capacity);
+void formatDigitalName(uint8_t pin, char* buffer, size_t capacity);
+void formatDigitalValue(uint8_t pin, char* buffer, size_t capacity);
+void formatAnalogName(uint8_t channel, char* buffer, size_t capacity);
+void formatAnalogValue(uint8_t channel, char* buffer, size_t capacity);
 
 } // namespace diagnostics
 

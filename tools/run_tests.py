@@ -18,8 +18,14 @@ SOURCES = [
     "src/music/Melody.cpp",
     "src/music/MusicPlayer.cpp",
     "src/app/ModeController.cpp",
+    "src/debug/InputMonitor.cpp",
+    "src/debug/ButtonTester.cpp",
+    "src/debug/SystemChecks.cpp",
+    "src/ui/JoystickRepeat.cpp",
     "src/ui/LcdText.cpp",
     "test/native/test_audio.cpp",
+    "test/native/test_debug.cpp",
+    "test/native/test_input.cpp",
     "test/native/test_main.cpp",
 ]
 

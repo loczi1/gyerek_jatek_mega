@@ -16,7 +16,6 @@
 #include <Wire.h>
 #include <LiquidCrystalIO.h>
 #include <IoAbstractionWire.h>
-#include <JoystickSwitchInput.h>
 #include <RuntimeMenuItem.h>
 #include <IoAbstraction.h>
 #include <EepromItemStorage.h>
@@ -31,32 +30,28 @@ extern SafeLiquidCrystalRenderer renderer;
 
 
 // Global Menu Item exports
-extern EnumMenuItem menuDigOut;
-extern TextMenuItem menuAnIn;
-extern TextMenuItem menuDigIn;
-extern BackMenuItem menuBackTesztelo;
-extern SubMenuItem menuTesztelo;
-extern EnumMenuItem menuJatek;
-extern ActionMenuItem menuNewActionItem;
-extern ListRuntimeMenuItem menuNewRuntimeList;
-extern BooleanMenuItem menuGomb1;
-extern BackMenuItem menuBackJatekValaszto;
-extern SubMenuItem menuJatekValaszto;
+extern ActionMenuItem menuJatek;
+extern ActionMenuItem menuRestart;
+extern SubMenuItem menuDebug;
+extern BackMenuItem menuBackDebug;
+extern ListRuntimeMenuItem menuButtonDebug;
+extern ListRuntimeMenuItem menuDigitalInputs;
+extern ListRuntimeMenuItem menuAnalogInputs;
+extern TextMenuItem menuStatus;
+extern ListRuntimeMenuItem menuSystemChecks;
 
 // Provide a wrapper to get hold of the root menu item and export setupMenu
-inline MenuItem& rootMenuItem() { return menuJatekValaszto; }
+inline MenuItem& rootMenuItem() { return menuJatek; }
 void setupMenu();
 
 // Callback functions must always include CALLBACK_FUNCTION after the return type
 #define CALLBACK_FUNCTION
 
-void CALLBACK_FUNCTION AnIn(int id);
-void CALLBACK_FUNCTION DigIn(int id);
-void CALLBACK_FUNCTION DigOut(int id);
-void CALLBACK_FUNCTION Gomb1(int id);
 void CALLBACK_FUNCTION Jatek(int id);
-void CALLBACK_FUNCTION Tesztelo(int id);
 void CALLBACK_FUNCTION Restart(int id);
-int fnNewRuntimeListRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);
+int fnButtonDebugRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);
+int fnDigitalInputsRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);
+int fnAnalogInputsRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);
+int fnSystemChecksRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);
 
 #endif // MENU_GENERATED_CODE_H

@@ -5,47 +5,13 @@
   "items": [
     {
       "parentId": 0,
-      "type": "subMenu",
+      "type": "actionMenu",
       "item": {
-        "secured": false,
-        "name": "JatekValaszto",
-        "variableName": "JatekValaszto",
-        "id": 1,
+        "name": "Jatek",
+        "variableName": "Jatek",
+        "functionName": "Jatek",
+        "id": 10,
         "eepromAddress": -1,
-        "readOnly": false,
-        "localOnly": false,
-        "visible": true,
-        "staticDataInRAM": false
-      }
-    },
-    {
-      "parentId": 0,
-      "type": "boolItem",
-      "defaultValue": "false",
-      "item": {
-        "naming": "TRUE_FALSE",
-        "name": "Input naplo",
-        "variableName": "Gomb1",
-        "id": 3,
-        "eepromAddress": -1,
-        "functionName": "Gomb1",
-        "readOnly": false,
-        "localOnly": false,
-        "visible": true,
-        "staticDataInRAM": false
-      }
-    },
-    {
-      "parentId": 0,
-      "type": "runtimeList",
-      "item": {
-        "initialRows": 7,
-        "listCreationMode": "CUSTOM_RTCALL",
-        "name": "Bemenetek",
-        "variableName": "NewRuntimeList",
-        "id": 4,
-        "eepromAddress": -1,
-        "functionName": "",
         "readOnly": false,
         "localOnly": false,
         "visible": true,
@@ -57,7 +23,7 @@
       "type": "actionMenu",
       "item": {
         "name": "Ujrainditas",
-        "variableName": "NewActionItem",
+        "variableName": "Restart",
         "functionName": "Restart",
         "id": 5,
         "eepromAddress": -1,
@@ -69,34 +35,13 @@
     },
     {
       "parentId": 0,
-      "type": "enumItem",
-      "defaultValue": "0",
-      "item": {
-        "enumEntries": [
-          "Cyclon",
-          "Zene"
-        ],
-        "name": "Jatek",
-        "variableName": "Jatek",
-        "id": 10,
-        "eepromAddress": -1,
-        "functionName": "Jatek",
-        "readOnly": false,
-        "localOnly": false,
-        "visible": true,
-        "staticDataInRAM": false
-      }
-    },
-    {
-      "parentId": 0,
       "type": "subMenu",
       "item": {
         "secured": false,
-        "name": "Teszt (fel-le)",
-        "variableName": "Tesztelo",
+        "name": "Debug",
+        "variableName": "Debug",
         "id": 7,
         "eepromAddress": -1,
-        "functionName": "Tesztelo",
         "readOnly": false,
         "localOnly": false,
         "visible": true,
@@ -105,16 +50,66 @@
     },
     {
       "parentId": 7,
-      "type": "textItem",
-      "defaultValue": "",
+      "type": "runtimeList",
       "item": {
-        "textLength": 20,
+        "initialRows": 50,
+        "listCreationMode": "CUSTOM_RTCALL",
+        "name": "Gombok",
+        "variableName": "ButtonDebug",
+        "id": 400,
+        "eepromAddress": -1,
+        "functionName": "",
+        "readOnly": true,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 7,
+      "type": "runtimeList",
+      "item": {
+        "initialRows": 54,
+        "listCreationMode": "CUSTOM_RTCALL",
+        "name": "Digitalis",
+        "variableName": "DigitalInputs",
+        "id": 100,
+        "eepromAddress": -1,
+        "functionName": "",
+        "readOnly": true,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 7,
+      "type": "runtimeList",
+      "item": {
+        "initialRows": 16,
+        "listCreationMode": "CUSTOM_RTCALL",
+        "name": "Analog",
+        "variableName": "AnalogInputs",
+        "id": 200,
+        "eepromAddress": -1,
+        "functionName": "",
+        "readOnly": true,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 7,
+      "type": "textItem",
+      "defaultValue": "Keszenlet",
+      "item": {
+        "textLength": 16,
         "itemType": "PLAIN_TEXT",
-        "name": "DigIn",
-        "variableName": "DigIn",
+        "name": "Allapot",
+        "variableName": "Status",
         "id": 8,
         "eepromAddress": -1,
-        "functionName": "DigIn",
         "readOnly": true,
         "localOnly": false,
         "visible": true,
@@ -123,37 +118,16 @@
     },
     {
       "parentId": 7,
-      "type": "textItem",
-      "defaultValue": "",
+      "type": "runtimeList",
       "item": {
-        "textLength": 10,
-        "itemType": "PLAIN_TEXT",
-        "name": "AnIn",
-        "variableName": "AnIn",
-        "id": 9,
+        "initialRows": 3,
+        "listCreationMode": "CUSTOM_RTCALL",
+        "name": "Hibak",
+        "variableName": "SystemChecks",
+        "id": 300,
         "eepromAddress": -1,
-        "functionName": "AnIn",
+        "functionName": "",
         "readOnly": true,
-        "localOnly": false,
-        "visible": true,
-        "staticDataInRAM": false
-      }
-    },
-    {
-      "parentId": 7,
-      "type": "enumItem",
-      "defaultValue": "0",
-      "item": {
-        "enumEntries": [
-          "OFF",
-          "ON"
-        ],
-        "name": "D13 LED",
-        "variableName": "DigOut",
-        "id": 11,
-        "eepromAddress": -1,
-        "functionName": "DigOut",
-        "readOnly": false,
         "localOnly": false,
         "visible": true,
         "staticDataInRAM": false
@@ -203,7 +177,7 @@
       },
       {
         "name": "UPDATES_PER_SEC",
-        "latestValue": "2",
+        "latestValue": "4",
         "subsystem": "DISPLAY"
       },
       {

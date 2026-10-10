@@ -67,7 +67,99 @@ class ProjectTests(unittest.TestCase):
                 self.assertIn(f"CALLBACK_FUNCTION {callback}(", callbacks)
             for index, text in enumerate(item.get("enumEntries", [])):
                 self.assertIn(f'enumStr{variable}_{index}[] PROGMEM = "{text}";', source)
-        self.assertIn("menuNewRuntimeList(&minfoNewRuntimeList, 7,", source)
+            if entry["type"] == "runtimeList":
+                rows = item["initialRows"]
+                self.assertIn(f"menu{variable}(&minfo{variable}, {rows}, fn{variable}RtCall,", source)
+                self.assertIn(f"fn{variable}RtCall(", header)
+                self.assertIn(f"fn{variable}RtCall(", callbacks)
+
+    def test_exactly_three_root_options_and_no_music_selection(self):
+        definition = json.loads((ROOT / "Gyerek_jatek_arduinomega.emf").read_text(encoding="utf-8"))
+        roots = [entry for entry in definition["items"] if entry["parentId"] == 0]
+        self.assertEqual([entry["item"]["name"] for entry in roots], ["Jatek", "Ujrainditas", "Debug"])
+        self.assertEqual([entry["type"] for entry in roots], ["actionMenu", "actionMenu", "subMenu"])
+        source = (ROOT / "src/Gyerek_jatek_arduinomega_menu.cpp").read_text(encoding="utf-8")
+        self.assertIn("menuJatek(&minfoJatek, &menuRestart,", source)
+        self.assertIn("menuRestart(&minfoRestart, &menuDebug,", source)
+        self.assertIn("menuDebug(&minfoDebug, &menuBackDebug, nullptr,", source)
+        self.assertIn("menuMgr.initWithoutInput(&renderer, &menuJatek);", source)
+        for unwanted in ("JatekValaszto", "Input naplo", "Bemenetek", "Zene", "enumStrJatek"):
+            self.assertNotIn(unwanted, source)
+        application = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
+        controller = (ROOT / "src/app/ModeController.h").read_text(encoding="utf-8")
+        self.assertNotIn("music::", application)
+        self.assertNotIn("music/MusicPlayer.h", controller)
+        self.assertIn("isShowingRoot()", application)
+
+    def test_debug_lists_cover_inputs_with_non_overlapping_ids(self):
+        definition = json.loads((ROOT / "Gyerek_jatek_arduinomega.emf").read_text(encoding="utf-8"))
+        children = [entry["item"] for entry in definition["items"] if entry["parentId"] == 7]
+        self.assertEqual([item["name"] for item in children], ["Gombok", "Digitalis", "Analog", "Allapot", "Hibak"])
+        self.assertTrue(all(item["readOnly"] for item in children))
+        self.assertEqual([item.get("initialRows") for item in children], [50, 54, 16, None, 3])
+        occupied = set()
+        for entry in definition["items"]:
+            item = entry["item"]
+            count = item.get("initialRows", 0) + 1
+            identifiers = set(range(item["id"], item["id"] + count))
+            self.assertTrue(occupied.isdisjoint(identifiers))
+            occupied.update(identifiers)
+
+    def test_debug_scanning_preserves_pin_modes_and_pwm(self):
+        source = (ROOT / "src/hardware/Diagnostics.cpp").read_text(encoding="utf-8")
+        readers = source.split("void begin()", 1)[0]
+        readers = re.sub(r"//[^\n]*|/\*[\s\S]*?\*/", "", readers)
+        self.assertNotRegex(readers, r"\b(?:pinMode|digitalWrite|digitalRead|analogWrite)\s*\(")
+        self.assertIn("debug::canReadDigital(pin)", readers)
+        self.assertIn("portModeRegister(port)", readers)
+        self.assertIn("portInputRegister(port)", readers)
+        self.assertIn("return debug::AnalogOutput;", readers)
+        menu = (ROOT / "src/Gyerek_jatek_arduinomega_menu.cpp").read_text(encoding="utf-8")
+        self.assertIn("Wire.setWireTimeout(board::I2cTimeoutMicros, true);", menu)
+
+    def test_navigation_is_fixed_repeat_and_has_no_joystick_task(self):
+        menu = (ROOT / "src/Gyerek_jatek_arduinomega_menu.cpp").read_text(encoding="utf-8")
+        self.assertIn("menuInput::begin();", menu)
+        self.assertIn("renderer.setUpdatesPerSecond(board::MenuDisplayUpdatesPerSecond);", menu)
+        self.assertNotIn("setupAnalogJoystickEncoder", menu)
+        self.assertNotIn("JoystickSwitchInput", menu)
+        navigation = (ROOT / "src/ui/MenuInput.cpp").read_text(encoding="utf-8")
+        self.assertIn("menuMgr.valueChanged(value);", navigation)
+        self.assertIn("encoder.increment(step);", navigation)
+        self.assertIn("repeat.reset(now);", navigation)
+        self.assertEqual(len(re.findall(r"analogRead\(board::MenuJoystickPin\)", navigation)), 2)
+        self.assertNotRegex(navigation, r"\bschedule(?:Once|FixedRate)\s*\(")
+        configuration = (ROOT / "src/config/NavigationConfig.h").read_text(encoding="utf-8")
+        self.assertRegex(configuration, r"MenuJoystickRepeatMs\s*=\s*300\s*;")
+        self.assertRegex(configuration, r"MenuDisplayUpdatesPerSecond\s*=\s*4\s*;")
+        definition = json.loads((ROOT / "Gyerek_jatek_arduinomega.emf").read_text(encoding="utf-8"))
+        properties = {item["name"]: item["latestValue"] for item in definition["codeOptions"]["lastProperties"]}
+        self.assertEqual(properties["UPDATES_PER_SEC"], "4")
+
+    def test_button_test_pullups_are_scoped_and_output_protected(self):
+        application = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
+        self.assertIn("diagnostics::setButtonTestEnabled(debugViewing && menuMgr.getCurrentMenu() == &menuButtonDebug, now);", application)
+        hardware = (ROOT / "src/hardware/Diagnostics.cpp").read_text(encoding="utf-8")
+        self.assertIn("if (!debug::canTestButton(pin)) return;", hardware)
+        self.assertIn("if ((*portModeRegister(port) & mask) == 0)", hardware)
+        self.assertIn("SREG = savedInterrupts;", hardware)
+        tester = (ROOT / "src/debug/ButtonTester.cpp").read_text(encoding="utf-8")
+        self.assertIn("pin != board::MenuButtonPin", tester)
+        self.assertIn("changedPullups_.contains(pin)", tester)
+        self.assertIn("setPullup_(pin, false);", tester)
+        self.assertNotIn("setNumberOfRows", application)
+        self.assertNotIn("setNumberOfRows", tester)
+
+    def test_menu_idle_timeout_is_two_minutes_after_setup(self):
+        configuration = (ROOT / "src/config/BoardConfig.h").read_text(encoding="utf-8")
+        self.assertRegex(configuration, r"constexpr\s+uint16_t\s+MenuIdleTimeoutSeconds\s*=\s*120\s*;")
+        application = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
+        self.assertRegex(application, r"setupMenu\(\);[\s\S]*?"
+                         r"renderer\.setResetIntervalTimeSeconds\(board::MenuIdleTimeoutSeconds\);\s*"
+                         r"renderer\.menuAltered\(\);")
+        # This override belongs to application code, not a designer-owned file.
+        menu = (ROOT / "src/Gyerek_jatek_arduinomega_menu.cpp").read_text(encoding="utf-8")
+        self.assertNotIn("setResetIntervalTimeSeconds", menu)
 
     def test_project_owned_safe_renderer_is_bound(self):
         source = (ROOT / "src/Gyerek_jatek_arduinomega_menu.cpp").read_text(encoding="utf-8")

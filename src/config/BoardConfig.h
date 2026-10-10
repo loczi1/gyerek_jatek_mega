@@ -2,21 +2,25 @@
 #define GYEREK_JATEK_BOARD_CONFIG_H
 
 #include <Arduino.h>
+#include "PinConfig.h"
 
 namespace board {
 
-constexpr uint8_t LedDataPin = 2;
-constexpr uint8_t BuzzerPin = 5;
-constexpr uint8_t GameButtonPin = 46;
-constexpr uint8_t FirstDiagnosticPin = 46;
-constexpr uint8_t LastDiagnosticPin = 52;
 constexpr uint8_t AnalogInputPin = A0;
 constexpr uint8_t EntropyInputPin = A1;
-constexpr uint8_t StatusLedPin = LED_BUILTIN;
+constexpr uint8_t MenuJoystickPin = A0 + MenuJoystickChannel;
 constexpr unsigned long SerialBaud = 9600;
 constexpr uint32_t AppTickMs = 5;
 constexpr uint32_t AudioTickMs = 5;
 constexpr uint32_t DiagnosticRefreshMs = 250;
+// Return from Debug/nested menus after two minutes without menu interaction.
+constexpr uint16_t MenuIdleTimeoutSeconds = 120;
+constexpr uint32_t I2cTimeoutMicros = 25000;
+
+static_assert(NUM_DIGITAL_PINS == DigitalPinCount + AnalogChannelCount,
+              "Debug pin policy requires an Arduino Mega 2560");
+static_assert(NUM_ANALOG_INPUTS == AnalogChannelCount, "Expected 16 analog channels");
+static_assert(LED_BUILTIN == StatusLedPin, "Unexpected status LED pin");
 
 constexpr uint8_t IdleBrightness = 10;
 constexpr uint8_t GameBrightness = 80;

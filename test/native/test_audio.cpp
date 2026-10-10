@@ -1,6 +1,7 @@
 #include "test_audio.h"
 #include "audio/SoundEffects.h"
 #include "app/ModeController.h"
+#include "music/MusicPlayer.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,9 +46,8 @@ uint8_t pickTarget() { return 20; }
 
 struct Fixture {
     game::CycloneGame game{pickTarget};
-    music::MusicPlayer music{playTone, stopTone};
     audio::SoundEffects effects{playTone, stopTone};
-    app::ModeController modes{game, music, effects};
+    app::ModeController modes{game, effects};
 };
 
 uint32_t startGame(Fixture& fixture) {
@@ -209,7 +209,7 @@ void testWinTriggersOnceAlongsideFlashes() {
     Fixture fixture;
     const uint32_t now = triggerWin(fixture, startGame(fixture));
     CHECK(fixture.effects.currentEffect() == audio::Effect::Win);
-    CHECK(!fixture.music.isPlaying());
+    CHECK(fixture.modes.mode() == app::Mode::Cyclone);
     for (uint32_t elapsed = 0; elapsed <= game::FeedbackDurationMs; elapsed += 5U) {
         fixture.modes.update(now + elapsed, true);
         fixture.modes.updateAudio(now + elapsed);
@@ -233,23 +233,20 @@ void testLossTriggersOnceAlongsideFlashes() {
     CHECK(fixture.game.state() == game::State::Idle);
 }
 
-void testModeChangeStopsEffectBeforeMusic() {
+void testDebugStopsEffectAndGame() {
     Fixture fixture;
     const uint32_t now = triggerWin(fixture, startGame(fixture));
-    CHECK(fixture.modes.select(app::Mode::Music, now + 1U, false));
+    CHECK(fixture.modes.select(app::Mode::Debug, now + 1U, false));
     CHECK(!fixture.effects.isPlaying());
-    CHECK(fixture.music.isPlaying());
     CHECK(fixture.game.state() == game::State::Disabled);
     CHECK(events[1].frequency == 0);
-    CHECK(events[2].frequency == 392); // First Greensleeves note, not the effect.
     fixture.modes.updateAudio(now + 150U);
-    CHECK(tones == 2 && stops == 1);
+    CHECK(tones == 1 && stops == 1);
     fixture.modes.updateAudio(now + 429U);
-    CHECK(events[4].frequency == 466);
     CHECK(fixture.modes.select(app::Mode::Cyclone, now + 430U, false));
-    CHECK(!fixture.music.isPlaying());
     CHECK(!fixture.effects.isPlaying());
-    CHECK(stops == 3);
+    CHECK(fixture.game.state() == game::State::Idle);
+    CHECK(stops == 1);
 }
 
 void testRestartCancelsResultSound() {
@@ -305,17 +302,19 @@ void testEveryLevelPlaysOneWinSound() {
     CHECK(tones == 12 && stops == 12);
 }
 
-void testMusicAdvancesOnlyInAudioTask() {
+void testEffectsAdvanceOnlyInAudioTask() {
     Fixture fixture;
-    CHECK(fixture.modes.select(app::Mode::Music, 0, false));
-    for (uint32_t now = 1; now <= 600; now += 5U)
-        fixture.modes.update(now, false);
-    CHECK(fixture.music.currentNote() == 0);
+    const uint32_t now = triggerWin(fixture, startGame(fixture));
+    for (uint32_t elapsed = 1; elapsed <= 300; elapsed += 5U)
+        fixture.modes.update(now + elapsed, false);
+    CHECK(fixture.effects.currentEffect() == audio::Effect::Win);
     CHECK(tones == 1);
-    fixture.modes.updateAudio(600);
-    CHECK(fixture.music.currentNote() == 1);
+    fixture.modes.updateAudio(now + 300U);
     CHECK(tones == 2);
+    CHECK(events[1].frequency == 784);
+    fixture.modes.updateAudio(now + 540U);
     CHECK(!fixture.effects.isPlaying());
+    CHECK(fixture.game.state() == game::State::WinFeedback);
 }
 
 void testNoSelectionAndNullOutputAreSafe() {
@@ -343,12 +342,12 @@ const Test Tests[] = {
     {"idle effects do not interrupt music", testIdleEffectsDoNotSilenceMusic},
     {"win plays once alongside LED flashes", testWinTriggersOnceAlongsideFlashes},
     {"loss plays once alongside LED flashes", testLossTriggersOnceAlongsideFlashes},
-    {"mode switch cancels effect before music", testModeChangeStopsEffectBeforeMusic},
+    {"Debug cancels result sound and game", testDebugStopsEffectAndGame},
     {"restart cancels result sound", testRestartCancelsResultSound},
     {"repeated selection does not retrigger sound", testSameSelectionDoesNotRetriggerSound},
     {"feedback end cancels delayed audio", testFeedbackEndCancelsDelayedSound},
     {"each of four levels plays one win sound", testEveryLevelPlaysOneWinSound},
-    {"music has independent audio updates", testMusicAdvancesOnlyInAudioTask},
+    {"effects have independent audio updates", testEffectsAdvanceOnlyInAudioTask},
     {"unselected mode and null audio outputs", testNoSelectionAndNullOutputAreSafe}
 };
 
