@@ -56,7 +56,12 @@ void setButtonPullup(uint8_t pin, bool enabled) {
 }
 
 bool readButtonPressed(uint8_t pin) {
-    return readDigital(pin) == debug::DigitalState::Low;
+    if (!debug::canTestButton(pin)) return false;
+    const uint8_t port = digitalPinToPort(pin);
+    const uint8_t mask = digitalPinToBitMask(pin);
+    if ((*portModeRegister(port) & mask) != 0) return false;
+    // Includes A0-A15 used as digital GPIO, excluding the analog joystick.
+    return (*portInputRegister(port) & mask) == 0;
 }
 
 debug::ButtonTester buttonTester(readButtonMode, setButtonPullup, readButtonPressed);

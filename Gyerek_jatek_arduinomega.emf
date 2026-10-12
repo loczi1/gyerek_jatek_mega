@@ -52,7 +52,7 @@
       "parentId": 7,
       "type": "runtimeList",
       "item": {
-        "initialRows": 50,
+        "initialRows": 65,
         "listCreationMode": "CUSTOM_RTCALL",
         "name": "Gombok",
         "variableName": "ButtonDebug",
@@ -60,6 +60,57 @@
         "eepromAddress": -1,
         "functionName": "",
         "readOnly": true,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 7,
+      "type": "subMenu",
+      "item": {
+        "secured": false,
+        "name": "LED szalag",
+        "variableName": "LedStrip",
+        "id": 20,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 20,
+      "type": "analogItem",
+      "defaultValue": "99",
+      "item": {
+        "maxValue": 99,
+        "offset": 1,
+        "divisor": 1,
+        "unitName": "",
+        "step": 1,
+        "name": "LED db",
+        "variableName": "LedCount",
+        "id": 21,
+        "eepromAddress": -1,
+        "functionName": "",
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 20,
+      "type": "actionMenu",
+      "item": {
+        "name": "Inditas",
+        "variableName": "StartLedTest",
+        "id": 22,
+        "eepromAddress": -1,
+        "functionName": "StartLedTest",
+        "readOnly": false,
         "localOnly": false,
         "visible": true,
         "staticDataInRAM": false

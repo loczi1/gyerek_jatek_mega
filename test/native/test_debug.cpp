@@ -57,7 +57,7 @@ void testReservedPinPolicy() {
         if (debug::canReadDigital(pin)) ++readable;
     }
     CHECK(readable == 47);
-    CHECK(debug::digitalRole(46) == debug::DigitalRole::GameButton);
+    CHECK(debug::digitalRole(board::GameButtonPin) == debug::DigitalRole::GameButton);
     CHECK(debug::digitalRole(53) == debug::DigitalRole::MenuButton);
     CHECK(!debug::canReadDigital(54));
     CHECK(!debug::canReadDigital(255));
@@ -68,7 +68,7 @@ void testDisabledSamplerDoesNoHardwareWork() {
     for (unsigned int tick = 0; tick < 100; ++tick) monitor.update();
     CHECK(!monitor.isEnabled());
     CHECK(digitalTotal == 0 && analogTotal == 0);
-    CHECK(monitor.digitalValue(46) == debug::DigitalState::Pending);
+    CHECK(monitor.digitalValue(board::GameButtonPin) == debug::DigitalState::Pending);
     CHECK(monitor.analogValue(15) == debug::AnalogPending);
 }
 
@@ -100,10 +100,10 @@ void testBoundedSamplingCoversEveryInput() {
 void testLiveSamplesRefreshWithoutReinitializing() {
     debug::InputMonitor monitor(readDigital, readAnalog);
     sampleAll(monitor);
-    CHECK(monitor.digitalValue(46) == debug::DigitalState::Low);
+    CHECK(monitor.digitalValue(board::GameButtonPin) == debug::DigitalState::Low);
     invertValues = true;
     sampleAll(monitor);
-    CHECK(monitor.digitalValue(46) == debug::DigitalState::High);
+    CHECK(monitor.digitalValue(board::GameButtonPin) == debug::DigitalState::High);
     CHECK(monitor.digitalValue(3) == debug::DigitalState::Low);
     CHECK(monitor.analogValue(15) == 976);
     for (uint8_t channel = 0; channel < board::AnalogChannelCount; ++channel)
@@ -133,7 +133,7 @@ void testMissingReadersShowPendingNotFakeValues() {
     debug::InputMonitor monitor;
     sampleAll(monitor);
     char text[16];
-    monitor.formatDigitalValue(46, text, sizeof(text));
+    monitor.formatDigitalValue(board::GameButtonPin, text, sizeof(text));
     CHECK(strcmp(text, "---") == 0);
     monitor.formatAnalogValue(15, text, sizeof(text));
     CHECK(strcmp(text, "---") == 0);
@@ -143,8 +143,8 @@ void testMissingReadersShowPendingNotFakeValues() {
 void testInputLabelsAndReservedRoles() {
     debug::InputMonitor monitor(readDigital, readAnalog);
     char text[16];
-    debug::InputMonitor::formatDigitalName(46, text, sizeof(text));
-    CHECK(strcmp(text, "D46 Jatek") == 0);
+    debug::InputMonitor::formatDigitalName(board::GameButtonPin, text, sizeof(text));
+    CHECK(strcmp(text, "D51 Jatek") == 0);
     debug::InputMonitor::formatDigitalName(53, text, sizeof(text));
     CHECK(strcmp(text, "D53 Menu") == 0);
     debug::InputMonitor::formatAnalogName(9, text, sizeof(text));

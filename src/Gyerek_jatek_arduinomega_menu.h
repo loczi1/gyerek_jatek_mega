@@ -35,6 +35,10 @@ extern ActionMenuItem menuRestart;
 extern SubMenuItem menuDebug;
 extern BackMenuItem menuBackDebug;
 extern ListRuntimeMenuItem menuButtonDebug;
+extern SubMenuItem menuLedStrip;
+extern BackMenuItem menuBackLedStrip;
+extern AnalogMenuItem menuLedCount;
+extern ActionMenuItem menuStartLedTest;
 extern ListRuntimeMenuItem menuDigitalInputs;
 extern ListRuntimeMenuItem menuAnalogInputs;
 extern TextMenuItem menuStatus;
@@ -49,6 +53,7 @@ void setupMenu();
 
 void CALLBACK_FUNCTION Jatek(int id);
 void CALLBACK_FUNCTION Restart(int id);
+void CALLBACK_FUNCTION StartLedTest(int id);
 int fnButtonDebugRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);
 int fnDigitalInputsRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);
 int fnAnalogInputsRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);

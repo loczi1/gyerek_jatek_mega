@@ -2,6 +2,7 @@
 #include "JoystickRepeat.h"
 #include "config/BoardConfig.h"
 #include "config/NavigationConfig.h"
+#include "app/Application.h"
 #include <tcMenu.h>
 #include <SwitchInput.h>
 
@@ -19,6 +20,7 @@ bool initialized = false;
 
 void selectMenu(pinid_t, bool held) {
     repeat.reset(millis());
+    if (application::handleLedTestButton(held)) return;
     menuMgr.onMenuSelect(held);
 }
 
@@ -38,6 +40,11 @@ void begin() {
 
 void update(uint32_t now) {
     if (!initialized) return;
+    if (application::isLedTestActive()) {
+        repeat.reset(now); // The click is the stepper; directional input is ignored.
+        lastSampleAt = now;
+        return;
+    }
 
     MenuItem* currentMenu = menuMgr.getCurrentMenu();
     MenuItem* currentEditor = menuMgr.getCurrentEditor();

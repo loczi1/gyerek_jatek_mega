@@ -27,10 +27,16 @@ A Debug megnyitása leállítja az aktuális menetet és a hangot. Így a játé
 
 **Automatikus visszalépés:** ha 2 percig nem használod a joystickot vagy a menügombot, a készülék visszatér a főmenübe. A bemeneti értékek automatikus frissülése és a tesztelt játékgomb nem hosszabbítja meg ezt az időt.
 
-- **Gombok:** ismeretlen bekötésű gombok megkeresése. A teszt idejére a biztonságos digitális bemeneteken bekapcsol a belső felhúzás: felengedve HIGH, a gombbal földre húzva LOW. A kijelzőn megjelenik az érintett csatlakozó száma (például D46).
+- **Gombok:** ismeretlen bekötésű gombok megkeresése a biztonságos **D0–D53 és A0–A15** bemeneteken. Az analóg csatlakozókat ilyenkor digitális gombbemenetként használja. A teszt idejére bekapcsol a belső felhúzás: felengedve HIGH, a gombbal földre húzva LOW. A kijelzőn a megfelelő név látszik (például **D51**, **A0** vagy **A15**).
 	- **Utolso:** az utolsó gombnyomás csatlakozója felengedés után is látható. **Lenyomva:** a jelenleg lenyomott gombok. **Darab:** darabszám. **Tesztelt:** a vizsgált bemenetek száma.
 	- Több gombnál legfeljebb három csatlakozó és **+N** jelenik meg; lejjebb minden vizsgált csatlakozó külön is ellenőrizhető. A tesztből kilépve visszaállnak az eredeti felhúzások.
-	- A D0/D1, D2, D5, D13, D20/D21, D53 és a kimenetként használt csatlakozók kimaradnak. A menügomb továbbra is a navigációt kezeli, nem tesztgomb.
+	- A D0/D1, D2, D5, D13, D20/D21, D53, a joystick **A9** bemenete és a kimenetként használt csatlakozók kimaradnak. Legfeljebb **61 bemenet** tesztelhető. A menügomb és az A9 joystick továbbra is a navigációt kezeli.
+- **LED szalag:** a D2-re kötött címezhető LED-szalag ellenőrzése.
+	1. A **LED db** sorban állítsd be a szalag hosszát **1–100 LED** között, majd hagyd jóvá a menügombbal.
+	2. Válaszd az **Inditas** lehetőséget. Az első LED fehéren világít.
+	3. A **joystick gombjának rövid megnyomása és felengedése** egy LED-del továbbviszi a fehér fényt. Az utolsó után ismét az első következik. A kijelzőn például **LED 3/75** látszik: a 75 LED-es szalag harmadik LED-je világít.
+	4. Kilépéshez **tartsd nyomva, majd engedd fel a joystick gombját**. A tesztfény kialszik. Két perc kattintás nélküli várakozás után automatikusan visszatér a főmenübe.
+	- A teszt közben a fel/le mozgatás nem léptet, és a fény nem mozog automatikusan. A normál játékgomb helyett a menü joystickjának gombját használd.
 - **Digitalis:** D0–D53 állapotai. A bekötött gomboknál LOW = lenyomva, HIGH = felengedve. A foglalt csatlakozók helyén UART, LED, HANG, I2C vagy OUT jelenik meg; ezeket a program nem alakítja át bemenetté.
 - **Analog:** A0–A15 pillanatnyi értékei, **0–1023** között. Az A9 Joy a joystick bemenete. A **---** még nem mért értéket, az OUT kimenetként használt csatlakozót jelöl.
 - **Allapot:** a készülék üzemállapota. Debug esetén a játék az ellenőrzés miatt áll.

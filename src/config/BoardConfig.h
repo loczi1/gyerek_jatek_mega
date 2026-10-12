@@ -20,6 +20,7 @@ constexpr uint32_t I2cTimeoutMicros = 25000;
 static_assert(NUM_DIGITAL_PINS == DigitalPinCount + AnalogChannelCount,
               "Debug pin policy requires an Arduino Mega 2560");
 static_assert(NUM_ANALOG_INPUTS == AnalogChannelCount, "Expected 16 analog channels");
+static_assert(A0 == FirstAnalogGpioPin, "Unexpected Mega analog GPIO mapping");
 static_assert(LED_BUILTIN == StatusLedPin, "Unexpected status LED pin");
 
 constexpr uint8_t IdleBrightness = 10;

@@ -15,14 +15,14 @@ namespace {
     } \
 } while (false)
 
-debug::ButtonPinMode pinModes[board::DigitalPinCount];
-bool pressed[board::DigitalPinCount];
-unsigned int reads[board::DigitalPinCount];
-unsigned int enables[board::DigitalPinCount];
-unsigned int disables[board::DigitalPinCount];
+debug::ButtonPinMode pinModes[board::GpioPinCount];
+bool pressed[board::GpioPinCount];
+unsigned int reads[board::GpioPinCount];
+unsigned int enables[board::GpioPinCount];
+unsigned int disables[board::GpioPinCount];
 
 debug::ButtonPinMode readMode(uint8_t pin) {
-    CHECK(pin < board::DigitalPinCount);
+    CHECK(pin < board::GpioPinCount);
     CHECK(debug::canTestButton(pin));
     return pinModes[pin];
 }
@@ -187,7 +187,8 @@ void testInvalidJoystickADCRequiresRearming() {
 }
 
 void testButtonCandidatesExcludePeripheralAndMenuPins() {
-    const uint8_t excluded[] = {0, 1, 2, 5, 13, 20, 21, 53};
+    const uint8_t excluded[] = {0, 1, 2, 5, 13, 20, 21, 53,
+        board::FirstAnalogGpioPin + board::MenuJoystickChannel};
     debug::PinSet candidates;
     for (uint8_t index = 0; index < debug::ButtonCandidateCount; ++index) {
         const uint8_t pin = debug::buttonCandidatePin(index);
@@ -195,25 +196,27 @@ void testButtonCandidatesExcludePeripheralAndMenuPins() {
         CHECK(!candidates.contains(pin));
         candidates.set(pin);
     }
-    CHECK(candidates.count() == 46);
-    CHECK(debug::ButtonDebugRowCount == 50);
+    CHECK(candidates.count() == 61);
+    CHECK(debug::ButtonDebugRowCount == 65);
     for (uint8_t pin : excluded) {
         CHECK(!debug::canTestButton(pin));
         CHECK(!candidates.contains(pin));
     }
-    CHECK(candidates.contains(46));
-    CHECK(debug::buttonCandidatePin(46) == 255);
+    CHECK(candidates.contains(board::GameButtonPin));
+    CHECK(candidates.contains(board::FirstAnalogGpioPin));
+    CHECK(candidates.contains(board::GpioPinCount - 1));
+    CHECK(debug::buttonCandidatePin(61) == 255);
 }
 
 void testButtonTestAddsAndRestoresOnlyMissingPullups() {
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, 0);
-    CHECK(tester.testedCount() == 46);
+    CHECK(tester.testedCount() == 61);
     tester.setEnabled(true, 1);
     tester.update(10);
     tester.setEnabled(false, 20);
     tester.setEnabled(false, 21);
-    for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin) {
+    for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin) {
         const bool existingPullup = pin >= 46 && pin <= 52;
         if (debug::canTestButton(pin)) {
             CHECK(enables[pin] == (existingPullup ? 0U : 1U));
@@ -231,7 +234,7 @@ void testButtonScanSkipsAnAlreadyConfiguredOutput() {
     pressed[4] = true;
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, 0);
-    CHECK(tester.testedCount() == 45);
+    CHECK(tester.testedCount() == 60);
     tester.update(1);
     tester.update(31);
     CHECK(tester.pressedCount() == 0);
@@ -249,7 +252,7 @@ void testNewOutputOwnerCannotBeOverwrittenOnTestExit() {
     CHECK(enables[4] == 1);
     pinModes[4] = debug::ButtonPinMode::Output;
     CHECK(tester.update(10));
-    CHECK(tester.testedCount() == 45);
+    CHECK(tester.testedCount() == 60);
     CHECK(reads[4] == 0);
     tester.setEnabled(false, 20);
     CHECK(disables[4] == 0);
@@ -259,35 +262,35 @@ void testNewOutputOwnerCannotBeOverwrittenOnTestExit() {
 void testButtonPressAndReleaseAreDebounced() {
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, 0);
-    pressed[46] = true;
+    pressed[board::GameButtonPin] = true;
     CHECK(!tester.update(10));
-    pressed[46] = false;
+    pressed[board::GameButtonPin] = false;
     CHECK(!tester.update(20));
-    pressed[46] = true;
+    pressed[board::GameButtonPin] = true;
     CHECK(!tester.update(25));
     CHECK(!tester.update(54));
     CHECK(tester.update(55));
-    CHECK(tester.isPressed(46));
+    CHECK(tester.isPressed(board::GameButtonPin));
     CHECK(!tester.update(1000));
-    pressed[46] = false;
+    pressed[board::GameButtonPin] = false;
     CHECK(!tester.update(1001));
     CHECK(!tester.update(1030));
     CHECK(tester.update(1031));
-    CHECK(!tester.isPressed(46));
+    CHECK(!tester.isPressed(board::GameButtonPin));
 }
 
 void testLastButtonPressRemainsVisibleAfterRelease() {
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, 0);
-    pressed[46] = true;
+    pressed[board::GameButtonPin] = true;
     tester.update(1);
     CHECK(tester.update(31));
-    pressed[46] = false;
+    pressed[board::GameButtonPin] = false;
     tester.update(32);
     CHECK(tester.update(62));
     char text[16];
     tester.formatValue(0, text, sizeof(text));
-    CHECK(strcmp(text, "D46") == 0);
+    CHECK(strcmp(text, "D51") == 0);
     tester.formatValue(1, text, sizeof(text));
     CHECK(strcmp(text, "NINCS") == 0);
     pressed[47] = true;
@@ -300,26 +303,26 @@ void testLastButtonPressRemainsVisibleAfterRelease() {
 void testMultipleButtonsAndOverflowCount() {
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, 0);
-    for (uint8_t pin = 46; pin <= 50; ++pin) pressed[pin] = true;
+    for (uint8_t pin = 47; pin <= 51; ++pin) pressed[pin] = true;
     tester.update(1);
     CHECK(tester.update(31));
     CHECK(tester.pressedCount() == 5);
     char text[16];
     tester.formatValue(1, text, sizeof(text));
-    CHECK(strcmp(text, "D46 D47 D48 +2") == 0);
+    CHECK(strcmp(text, "D47 D48 D49 +2") == 0);
     tester.formatValue(2, text, sizeof(text));
     CHECK(strcmp(text, "5") == 0);
     tester.formatValue(3, text, sizeof(text));
-    CHECK(strcmp(text, "46") == 0);
+    CHECK(strcmp(text, "61") == 0);
 }
 
 void testButtonTestWorksWhenButtonHeldOnEntry() {
-    pressed[46] = true;
+    pressed[board::GameButtonPin] = true;
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, 0);
     CHECK(!tester.update(0));
     CHECK(tester.update(30));
-    CHECK(tester.isPressed(46));
+    CHECK(tester.isPressed(board::GameButtonPin));
     CHECK(!tester.update(10000));
 }
 
@@ -327,11 +330,11 @@ void testButtonDebounceTimerRollover() {
     const uint32_t now = UINT32_MAX - 10U;
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, now);
-    pressed[46] = true;
+    pressed[board::GameButtonPin] = true;
     CHECK(!tester.update(now + 1U));
     CHECK(!tester.update(now + 30U));
     CHECK(tester.update(now + 31U));
-    pressed[46] = false;
+    pressed[board::GameButtonPin] = false;
     CHECK(!tester.update(now + 32U));
     CHECK(tester.update(now + 62U));
     CHECK(tester.pressedCount() == 0);
@@ -341,29 +344,29 @@ void testButtonTestDisabledAndReentryLifecycle() {
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     CHECK(!tester.update(100));
     tester.setEnabled(true, 100);
-    pressed[46] = true;
+    pressed[board::GameButtonPin] = true;
     tester.update(101);
     tester.update(131);
     tester.setEnabled(false, 132);
-    const unsigned int oldReads = reads[46];
+    const unsigned int oldReads = reads[board::GameButtonPin];
     CHECK(!tester.update(1000));
-    CHECK(reads[46] == oldReads);
-    pressed[46] = false;
+    CHECK(reads[board::GameButtonPin] == oldReads);
+    pressed[board::GameButtonPin] = false;
     tester.setEnabled(true, 1001);
     char text[16];
     tester.formatValue(0, text, sizeof(text));
     CHECK(strcmp(text, "NINCS") == 0);
-    CHECK(tester.testedCount() == 46);
+    CHECK(tester.testedCount() == 61);
     CHECK(!tester.update(1040));
 }
 
 void testAllButtonRowsAreBoundedAndStable() {
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, 0);
-    for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin) pressed[pin] = true;
+    for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin) pressed[pin] = true;
     tester.update(1);
     tester.update(31);
-    CHECK(tester.pressedCount() == 46);
+    CHECK(tester.pressedCount() == 61);
     for (size_t capacity = 0; capacity <= 21; ++capacity) {
         for (uint8_t row = 0; row <= debug::ButtonDebugRowCount; ++row) {
             char storage[23];
@@ -387,6 +390,86 @@ void testButtonTestWithoutReadersIsSafe() {
     CHECK(!tester.update(100));
     CHECK(tester.testedCount() == 0 && tester.pressedCount() == 0);
     tester.setEnabled(false, 101);
+}
+
+void testAllAvailableAnalogButtonsAreDetected() {
+    debug::ButtonTester tester(readMode, setPullup, readPressed);
+    tester.setEnabled(true, 0);
+    for (uint8_t channel = 0; channel < board::AnalogChannelCount; ++channel)
+        pressed[board::FirstAnalogGpioPin + channel] = true;
+    tester.update(1);
+    CHECK(tester.update(31));
+    CHECK(tester.pressedCount() == 15);
+    for (uint8_t channel = 0; channel < board::AnalogChannelCount; ++channel) {
+        const uint8_t pin = board::FirstAnalogGpioPin + channel;
+        if (channel == board::MenuJoystickChannel) {
+            CHECK(!tester.isPressed(pin));
+            CHECK(reads[pin] == 0 && enables[pin] == 0);
+        } else {
+            CHECK(tester.isPressed(pin));
+            CHECK(reads[pin] == 2 && enables[pin] == 1);
+        }
+    }
+    char text[16];
+    tester.formatValue(0, text, sizeof(text));
+    CHECK(strcmp(text, "A0 A1 A2 +12") == 0);
+}
+
+void testAnalogAndDigitalNamesShareButtonReport() {
+    debug::ButtonTester tester(readMode, setPullup, readPressed);
+    tester.setEnabled(true, 0);
+    pressed[board::GameButtonPin] = true;
+    pressed[board::FirstAnalogGpioPin] = true;
+    pressed[board::GpioPinCount - 1] = true;
+    tester.update(1);
+    CHECK(tester.update(31));
+    char text[16];
+    tester.formatValue(1, text, sizeof(text));
+    CHECK(strcmp(text, "D51 A0 A15") == 0);
+    for (uint8_t row = debug::ButtonSummaryRows; row < debug::ButtonDebugRowCount; ++row) {
+        const uint8_t pin = debug::buttonCandidatePin(row - debug::ButtonSummaryRows);
+        tester.formatName(row, text, sizeof(text));
+        if (pin == board::FirstAnalogGpioPin) CHECK(strcmp(text, "A0") == 0);
+        if (pin == board::GpioPinCount - 1) CHECK(strcmp(text, "A15") == 0);
+    }
+}
+
+void testAnalogOutputAndExistingPullupArePreserved() {
+    const uint8_t outputPin = board::FirstAnalogGpioPin + 3;
+    const uint8_t pullupPin = board::FirstAnalogGpioPin + 15;
+    pinModes[outputPin] = debug::ButtonPinMode::Output;
+    pinModes[pullupPin] = debug::ButtonPinMode::PullupInput;
+    debug::ButtonTester tester(readMode, setPullup, readPressed);
+    tester.setEnabled(true, 0);
+    CHECK(tester.testedCount() == 60);
+    tester.update(1);
+    tester.setEnabled(false, 31);
+    CHECK(enables[outputPin] == 0 && disables[outputPin] == 0 && reads[outputPin] == 0);
+    CHECK(enables[pullupPin] == 0 && disables[pullupPin] == 0);
+    CHECK(pinModes[outputPin] == debug::ButtonPinMode::Output);
+    CHECK(pinModes[pullupPin] == debug::ButtonPinMode::PullupInput);
+    for (uint8_t channel = 0; channel < board::AnalogChannelCount; ++channel) {
+        const uint8_t pin = board::FirstAnalogGpioPin + channel;
+        if (channel == board::MenuJoystickChannel || pin == outputPin || pin == pullupPin) continue;
+        CHECK(enables[pin] == 1 && disables[pin] == 1);
+        CHECK(pinModes[pin] == debug::ButtonPinMode::FloatingInput);
+    }
+}
+
+void testAnalogPinSetBoundsAndJoystickProtection() {
+    debug::PinSet pins;
+    pins.set(board::FirstAnalogGpioPin);
+    pins.set(board::GpioPinCount - 1);
+    pins.set(board::GpioPinCount);
+    pins.set(255);
+    CHECK(pins.count() == 2);
+    CHECK(!pins.contains(board::GpioPinCount));
+    CHECK(!pins.contains(255));
+    pins.clear();
+    CHECK(pins.count() == 0);
+    CHECK(!debug::canTestButton(board::FirstAnalogGpioPin + board::MenuJoystickChannel));
+    CHECK(!debug::canTestButton(board::GpioPinCount));
+    CHECK(!debug::canTestButton(255));
 }
 
 struct Test { const char* name; void (*run)(); };
@@ -414,14 +497,18 @@ const Test Tests[] = {
     {"button tester debounce survives timer rollover", testButtonDebounceTimerRollover},
     {"button test disable and reentry lifecycle", testButtonTestDisabledAndReentryLifecycle},
     {"all button report rows honor buffer bounds", testAllButtonRowsAreBoundedAndStable},
-    {"button tester with missing IO is safe", testButtonTestWithoutReadersIsSafe}
+    {"button tester with missing IO is safe", testButtonTestWithoutReadersIsSafe},
+    {"all available analog GPIO buttons are detected", testAllAvailableAnalogButtonsAreDetected},
+    {"digital and analog pin names share button report", testAnalogAndDigitalNamesShareButtonReport},
+    {"analog output and existing pullups are preserved", testAnalogOutputAndExistingPullupArePreserved},
+    {"analog pin-set bounds and joystick reservation", testAnalogPinSetBoundsAndJoystickProtection}
 };
 
 } // namespace
 
 size_t runInputTests() {
     for (const Test& test : Tests) {
-        for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin) {
+        for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin) {
             pinModes[pin] = pin >= 46 && pin <= 52
                 ? debug::ButtonPinMode::PullupInput : debug::ButtonPinMode::FloatingInput;
             pressed[pin] = false;

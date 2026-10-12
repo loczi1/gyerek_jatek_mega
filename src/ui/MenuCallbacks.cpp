@@ -13,6 +13,10 @@ void CALLBACK_FUNCTION Restart(int) {
     application::restart();
 }
 
+void CALLBACK_FUNCTION StartLedTest(int) {
+    application::startLedTest();
+}
+
 namespace {
 
 using FormatRow = void (*)(uint8_t row, char* buffer, size_t capacity);

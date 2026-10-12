@@ -13,6 +13,7 @@
 #include <tcMenu.h>
 #include "config/BoardConfig.h"
 #include "config/NavigationConfig.h"
+#include "config/LedConfig.h"
 #include "Gyerek_jatek_arduinomega_menu.h"
 #include "ui/MenuInput.h"
 
@@ -35,8 +36,16 @@ const PROGMEM AnyMenuInfo minfoAnalogInputs = { "Analog", 200, 0xffff, 0, NO_CAL
 ListRuntimeMenuItem menuAnalogInputs(&minfoAnalogInputs, 16, fnAnalogInputsRtCall, &menuStatus, INFO_LOCATION_PGM);
 const PROGMEM AnyMenuInfo minfoDigitalInputs = { "Digitalis", 100, 0xffff, 0, NO_CALLBACK };
 ListRuntimeMenuItem menuDigitalInputs(&minfoDigitalInputs, 54, fnDigitalInputsRtCall, &menuAnalogInputs, INFO_LOCATION_PGM);
+const PROGMEM AnyMenuInfo minfoStartLedTest = { "Inditas", 22, 0xffff, 0, StartLedTest };
+ActionMenuItem menuStartLedTest(&minfoStartLedTest, nullptr, INFO_LOCATION_PGM);
+// Raw 0..99 with offset +1 is displayed as 1..100 LEDs.
+const PROGMEM AnalogMenuInfo minfoLedCount = { "LED db", 21, 0xffff, 99, NO_CALLBACK, 1, 1, "" };
+AnalogMenuItem menuLedCount(&minfoLedCount, board::DefaultLedTestCount - 1, &menuStartLedTest, INFO_LOCATION_PGM);
+const PROGMEM SubMenuInfo minfoLedStrip = { "LED szalag", 20, 0xffff, 0, NO_CALLBACK };
+BackMenuItem menuBackLedStrip(&minfoLedStrip, &menuLedCount, INFO_LOCATION_PGM);
+SubMenuItem menuLedStrip(&minfoLedStrip, &menuBackLedStrip, &menuDigitalInputs, INFO_LOCATION_PGM);
 const PROGMEM AnyMenuInfo minfoButtonDebug = { "Gombok", 400, 0xffff, 0, NO_CALLBACK };
-ListRuntimeMenuItem menuButtonDebug(&minfoButtonDebug, 50, fnButtonDebugRtCall, &menuDigitalInputs, INFO_LOCATION_PGM);
+ListRuntimeMenuItem menuButtonDebug(&minfoButtonDebug, 65, fnButtonDebugRtCall, &menuLedStrip, INFO_LOCATION_PGM);
 const PROGMEM SubMenuInfo minfoDebug = { "Debug", 7, 0xffff, 0, NO_CALLBACK };
 BackMenuItem menuBackDebug(&minfoDebug, &menuButtonDebug, INFO_LOCATION_PGM);
 SubMenuItem menuDebug(&minfoDebug, &menuBackDebug, nullptr, INFO_LOCATION_PGM);

@@ -23,7 +23,8 @@ class ProjectTests(unittest.TestCase):
         environment = config["env:megaatmega2560"]
         self.assertEqual(environment["platform"], "atmelavr@5.3.0")
         self.assertIn("-Werror", environment["build_src_flags"])
-        self.assertEqual(environment["extra_scripts"], "pre:tools/check_build.py")
+        self.assertIn("pre:tools/generate_config.py", environment["extra_scripts"])
+        self.assertIn("pre:tools/check_build.py", environment["extra_scripts"])
         dependencies = environment["lib_deps"].split()
         self.assertEqual(len(dependencies), 8)
         for dependency in dependencies:
@@ -94,9 +95,9 @@ class ProjectTests(unittest.TestCase):
     def test_debug_lists_cover_inputs_with_non_overlapping_ids(self):
         definition = json.loads((ROOT / "Gyerek_jatek_arduinomega.emf").read_text(encoding="utf-8"))
         children = [entry["item"] for entry in definition["items"] if entry["parentId"] == 7]
-        self.assertEqual([item["name"] for item in children], ["Gombok", "Digitalis", "Analog", "Allapot", "Hibak"])
-        self.assertTrue(all(item["readOnly"] for item in children))
-        self.assertEqual([item.get("initialRows") for item in children], [50, 54, 16, None, 3])
+        self.assertEqual([item["name"] for item in children], ["Gombok", "LED szalag", "Digitalis", "Analog", "Allapot", "Hibak"])
+        self.assertTrue(all(item["readOnly"] for item in children if item["name"] != "LED szalag"))
+        self.assertEqual([item.get("initialRows") for item in children], [65, None, 54, 16, None, 3])
         occupied = set()
         for entry in definition["items"]:
             item = entry["item"]
@@ -149,6 +150,47 @@ class ProjectTests(unittest.TestCase):
         self.assertIn("setPullup_(pin, false);", tester)
         self.assertNotIn("setNumberOfRows", application)
         self.assertNotIn("setNumberOfRows", tester)
+
+    def test_analog_button_gpio_and_joystick_exclusion(self):
+        tester = (ROOT / "src/debug/ButtonTester.cpp").read_text(encoding="utf-8")
+        self.assertIn("pin != board::FirstAnalogGpioPin + board::MenuJoystickChannel", tester)
+        self.assertIn("InputMonitor::formatAnalogName", tester)
+        hardware = (ROOT / "src/hardware/Diagnostics.cpp").read_text(encoding="utf-8")
+        self.assertIn("if (!debug::canTestButton(pin)) return false;", hardware)
+        self.assertIn("return (*portInputRegister(port) & mask) == 0;", hardware)
+        header = (ROOT / "src/debug/ButtonTester.h").read_text(encoding="utf-8")
+        self.assertIn("changedAt_[board::GpioPinCount]", header)
+
+    def test_led_strip_menu_count_and_single_d2_controller(self):
+        definition = json.loads((ROOT / "Gyerek_jatek_arduinomega.emf").read_text(encoding="utf-8"))
+        children = [entry for entry in definition["items"] if entry["parentId"] == 20]
+        self.assertEqual([entry["item"]["name"] for entry in children], ["LED db", "Inditas"])
+        count = children[0]
+        self.assertEqual(count["type"], "analogItem")
+        self.assertEqual(count["defaultValue"], "99")
+        self.assertEqual(count["item"]["maxValue"], 99)
+        self.assertEqual(count["item"]["offset"], 1)
+        hardware = (ROOT / "src/hardware/LedDisplay.cpp").read_text(encoding="utf-8")
+        self.assertEqual(hardware.count("FastLED.addLeds<"), 1)
+        self.assertIn("CRGB pixels[board::LedStripCapacity];", hardware)
+        self.assertIn("fill_solid(pixels, board::LedStripCapacity, CRGB::Black);", hardware)
+        self.assertIn("pixels[test.position()] = CRGB::White;", hardware)
+        config = (ROOT / "src/config/LedConfig.h").read_text(encoding="utf-8")
+        self.assertRegex(config, r"LedStripCapacity\s*=\s*100\s*;")
+
+    def test_led_test_click_exit_and_timeout_are_scoped(self):
+        application = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
+        self.assertIn("menuMgr.getCurrentMenu() != &menuBackLedStrip", application)
+        self.assertIn("renderer.takeOverDisplay(renderLedTest);", application)
+        self.assertIn("renderer.giveBackDisplay();", application)
+        self.assertIn("if (returnToRoot) menuMgr.resetMenu(true);", application)
+        self.assertIn("ledTest.hasTimedOut(now)", application)
+        self.assertIn("ledTest(board::MenuIdleTimeoutSeconds * 1000UL)", application)
+        self.assertIn("if (held)", application)
+        self.assertIn("ledTest.step(millis());", application)
+        navigation = (ROOT / "src/ui/MenuInput.cpp").read_text(encoding="utf-8")
+        self.assertIn("if (application::handleLedTestButton(held)) return;", navigation)
+        self.assertIn("if (application::isLedTestActive())", navigation)
 
     def test_menu_idle_timeout_is_two_minutes_after_setup(self):
         configuration = (ROOT / "src/config/BoardConfig.h").read_text(encoding="utf-8")

@@ -9,8 +9,9 @@ namespace debug {
 
 constexpr uint32_t ButtonDebounceMs = 30;
 constexpr uint8_t ButtonSummaryRows = 4;
-// UART D0/1, LED D2, buzzer D5, status D13, I2C D20/21 and menu D53.
-constexpr uint8_t ButtonCandidateCount = board::DigitalPinCount - 8;
+// Exclude UART D0/1, LED D2, buzzer D5, status D13, I2C D20/21, menu D53
+// and analog joystick A9. Other analog pins work as GPIO while testing.
+constexpr uint8_t ButtonCandidateCount = board::GpioPinCount - 9;
 constexpr uint8_t ButtonDebugRowCount = ButtonSummaryRows + ButtonCandidateCount;
 
 enum class ButtonPinMode : uint8_t { FloatingInput, PullupInput, Output };
@@ -49,7 +50,7 @@ private:
     PinSet rawLow_;
     PinSet stableLow_;
     PinSet lastPress_;
-    uint32_t changedAt_[board::DigitalPinCount] = {};
+    uint32_t changedAt_[board::GpioPinCount] = {};
     bool enabled_ = false;
 };
 

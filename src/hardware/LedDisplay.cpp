@@ -5,7 +5,10 @@
 namespace leds {
 namespace {
 
-CRGB pixels[game::TotalLedCount];
+// One controller owns D2 for both the 75-pixel game and up to 100 test pixels.
+// Every frame clears the tail, so test pixels cannot leak into gameplay.
+CRGB pixels[board::LedStripCapacity];
+static_assert(board::LedStripCapacity >= game::TotalLedCount, "LED buffer too small for the game");
 
 void drawScore(uint8_t count) {
     for (uint8_t i = 0; i < game::ScoreLedCount && i < count; ++i)
@@ -15,18 +18,18 @@ void drawScore(uint8_t count) {
 } // namespace
 
 void begin() {
-    FastLED.addLeds<WS2812B, board::LedDataPin, GRB>(pixels, game::TotalLedCount);
+    FastLED.addLeds<WS2812B, board::LedDataPin, GRB>(pixels, board::LedStripCapacity);
     FastLED.setMaxPowerInVoltsAndMilliamps(5, board::MaximumLedMilliamps);
     clear();
 }
 
 void clear() {
-    fill_solid(pixels, game::TotalLedCount, CRGB::Black);
+    fill_solid(pixels, board::LedStripCapacity, CRGB::Black);
     FastLED.show();
 }
 
 void draw(const game::CycloneGame& currentGame) {
-    fill_solid(pixels, game::TotalLedCount, CRGB::Black);
+    fill_solid(pixels, board::LedStripCapacity, CRGB::Black);
     switch (currentGame.state()) {
         case game::State::Disabled:
             break;
@@ -67,6 +70,15 @@ void draw(const game::CycloneGame& currentGame) {
             drawScore(currentGame.scoreLeds());
             break;
     }
+    FastLED.show();
+}
+
+void drawTest(const debug::LedStripTester& test) {
+    fill_solid(pixels, board::LedStripCapacity, CRGB::Black);
+    FastLED.setBrightness(board::GameBrightness);
+    if (test.isActive() && test.position() < test.length() &&
+        test.position() < board::LedStripCapacity)
+        pixels[test.position()] = CRGB::White;
     FastLED.show();
 }
 

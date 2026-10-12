@@ -10,6 +10,7 @@ import subprocess
 import sys
 import unittest
 
+import generate_config
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = [
@@ -20,12 +21,14 @@ SOURCES = [
     "src/app/ModeController.cpp",
     "src/debug/InputMonitor.cpp",
     "src/debug/ButtonTester.cpp",
+    "src/debug/LedStripTester.cpp",
     "src/debug/SystemChecks.cpp",
     "src/ui/JoystickRepeat.cpp",
     "src/ui/LcdText.cpp",
     "test/native/test_audio.cpp",
     "test/native/test_debug.cpp",
     "test/native/test_input.cpp",
+    "test/native/test_led_strip.cpp",
     "test/native/test_main.cpp",
 ]
 
@@ -62,6 +65,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sanitize", action="store_true", help="Enable undefined-behavior checks if supported by your compiler")
     arguments = parser.parse_args()
+
+    generate_config.ensure_generated(ROOT)
 
     project_tests = unittest.defaultTestLoader.discover(str(ROOT / "test"), pattern="test_*.py")
     if not unittest.TextTestRunner(verbosity=2).run(project_tests).wasSuccessful():

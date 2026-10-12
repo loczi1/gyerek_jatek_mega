@@ -7,6 +7,7 @@
 #include "test_audio.h"
 #include "test_debug.h"
 #include "test_input.h"
+#include "test_led_strip.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -544,6 +545,7 @@ int main() {
     const size_t audioTests = runAudioTests();
     const size_t debugTests = runDebugTests();
     const size_t inputTests = runInputTests();
-    printf("\n%zu native regression tests passed.\n", sizeof(Tests) / sizeof(Tests[0]) + audioTests + debugTests + inputTests);
+    const size_t ledTests = runLedStripTests();
+    printf("\n%zu native regression tests passed.\n", sizeof(Tests) / sizeof(Tests[0]) + audioTests + debugTests + inputTests + ledTests);
     return EXIT_SUCCESS;
 }

@@ -11,6 +11,10 @@ void run();
 void playGame();
 void restart();
 void refreshDiagnostics();
+void startLedTest();
+bool isLedTestActive();
+// Returns true when the test consumes a joystick-button click/hold.
+bool handleLedTestButton(bool held);
 void formatSystemCheckName(uint8_t row, char* buffer, size_t capacity);
 void formatSystemCheckValue(uint8_t row, char* buffer, size_t capacity);
 

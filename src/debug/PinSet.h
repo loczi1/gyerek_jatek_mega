@@ -5,7 +5,7 @@
 
 namespace debug {
 
-// Compact, bounded set for the Mega's D0-D53 bank. No heap or 64-bit shifts.
+// Compact, bounded set for D0-D53 and A0-A15 GPIO. No heap or 64-bit shifts.
 class PinSet {
 public:
     void clear() {
@@ -13,12 +13,12 @@ public:
     }
 
     bool contains(uint8_t pin) const {
-        return pin < board::DigitalPinCount &&
+        return pin < board::GpioPinCount &&
             (bits_[pin / 8] & static_cast<uint8_t>(1U << (pin % 8))) != 0;
     }
 
     void set(uint8_t pin, bool included = true) {
-        if (pin >= board::DigitalPinCount) return;
+        if (pin >= board::GpioPinCount) return;
         const uint8_t mask = static_cast<uint8_t>(1U << (pin % 8));
         if (included) bits_[pin / 8] |= mask;
         else bits_[pin / 8] &= static_cast<uint8_t>(~mask);
@@ -26,13 +26,13 @@ public:
 
     uint8_t count() const {
         uint8_t result = 0;
-        for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin)
+        for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin)
             if (contains(pin)) ++result;
         return result;
     }
 
 private:
-    uint8_t bits_[(board::DigitalPinCount + 7) / 8] = {};
+    uint8_t bits_[(board::GpioPinCount + 7) / 8] = {};
 };
 
 } // namespace debug

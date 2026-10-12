@@ -5,12 +5,14 @@
 namespace debug {
 
 bool canTestButton(uint8_t pin) {
+    if (pin >= board::FirstAnalogGpioPin && pin < board::GpioPinCount)
+        return pin != board::FirstAnalogGpioPin + board::MenuJoystickChannel;
     return canReadDigital(pin) && pin != board::MenuButtonPin;
 }
 
 uint8_t buttonCandidatePin(uint8_t index) {
     uint8_t current = 0;
-    for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin) {
+    for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin) {
         if (canTestButton(pin) && current++ == index) return pin;
     }
     return 0xff;
@@ -21,7 +23,7 @@ void ButtonTester::setEnabled(bool enabled, uint32_t now) {
     if (!enabled) {
         // Restore only pull-ups this test added, and never touch a pin that
         // another owner has since made an output. Existing pull-ups stay on.
-        for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin) {
+        for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin) {
             if (changedPullups_.contains(pin) && readMode_ && setPullup_ &&
                 readMode_(pin) == ButtonPinMode::PullupInput)
                 setPullup_(pin, false);
@@ -42,7 +44,7 @@ void ButtonTester::setEnabled(bool enabled, uint32_t now) {
     enabled_ = true;
     if (!readMode_ || !readPressed_) return;
 
-    for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin) {
+    for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin) {
         if (!canTestButton(pin)) continue;
         const ButtonPinMode mode = readMode_(pin);
         if (mode == ButtonPinMode::Output) {
@@ -63,7 +65,7 @@ bool ButtonTester::update(uint32_t now) {
     if (!enabled_ || !readMode_ || !readPressed_) return false;
     bool changed = false;
     bool newPress = false;
-    for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin) {
+    for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin) {
         if (!activePins_.contains(pin)) continue;
         if (readMode_(pin) == ButtonPinMode::Output) {
             activePins_.set(pin, false);
@@ -103,10 +105,12 @@ void ButtonTester::formatPins(const PinSet& pins, char* buffer, size_t capacity)
     char text[16] = {};
     size_t used = 0;
     uint8_t listed = 0;
-    for (uint8_t pin = 0; pin < board::DigitalPinCount && listed < 3; ++pin) {
+    for (uint8_t pin = 0; pin < board::GpioPinCount && listed < 3; ++pin) {
         if (!pins.contains(pin)) continue;
-        const int count = snprintf(text + used, sizeof(text) - used, "%sD%u",
-            listed == 0 ? "" : " ", static_cast<unsigned int>(pin));
+        const bool analog = pin >= board::FirstAnalogGpioPin;
+        const unsigned int number = analog ? pin - board::FirstAnalogGpioPin : pin;
+        const int count = snprintf(text + used, sizeof(text) - used, "%s%c%u",
+            listed == 0 ? "" : " ", analog ? 'A' : 'D', number);
         if (count < 0) break;
         used += static_cast<size_t>(count);
         ++listed;
@@ -123,7 +127,11 @@ void ButtonTester::formatName(uint8_t row, char* buffer, size_t capacity) {
             (row == 2 ? "Darab" : "Tesztelt"));
         snprintf(buffer, capacity, "%s", text);
     } else {
-        InputMonitor::formatDigitalName(buttonCandidatePin(row - ButtonSummaryRows), buffer, capacity);
+        const uint8_t pin = buttonCandidatePin(row - ButtonSummaryRows);
+        if (pin >= board::FirstAnalogGpioPin && pin < board::GpioPinCount)
+            InputMonitor::formatAnalogName(pin - board::FirstAnalogGpioPin, buffer, capacity);
+        else
+            InputMonitor::formatDigitalName(pin, buffer, capacity);
     }
 }
 
@@ -136,7 +144,7 @@ void ButtonTester::formatValue(uint8_t row, char* buffer, size_t capacity) const
             row == 2 ? pressedCount() : testedCount()));
     else {
         const uint8_t pin = buttonCandidatePin(row - ButtonSummaryRows);
-        const char* text = pin >= board::DigitalPinCount ? "" :
+        const char* text = pin >= board::GpioPinCount ? "" :
             (outputPins_.contains(pin) ? "OUT" : (activePins_.contains(pin)
                 ? (stableLow_.contains(pin) ? "LOW" : "HIGH") : "---"));
         snprintf(buffer, capacity, "%s", text);

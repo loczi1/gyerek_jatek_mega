@@ -2,10 +2,12 @@
 #include "ModeController.h"
 #include "Gyerek_jatek_arduinomega_menu.h"
 #include "config/BoardConfig.h"
+#include "debug/LedStripTester.h"
 #include "debug/SystemChecks.h"
 #include "hardware/Diagnostics.h"
 #include "hardware/LedDisplay.h"
 #include "ui/MenuInput.h"
+#include "ui/LcdText.h"
 #include <TaskManagerIO.h>
 #include <stdio.h>
 
@@ -35,6 +37,8 @@ game::CycloneGame cyclone(pickTarget);
 audio::SoundEffects soundEffects(playTone, stopTone);
 app::ModeController controller(cyclone, soundEffects);
 debug::SystemChecks systemChecks;
+debug::LedStripTester ledTest(board::MenuIdleTimeoutSeconds * 1000UL);
+bool ledTestScreenDirty = false;
 taskid_t updateTask = TASKMGR_INVALIDID;
 taskid_t audioTask = TASKMGR_INVALIDID;
 uint32_t lastDiagnosticRefresh = 0;
@@ -43,6 +47,35 @@ bool debugViewing = false;
 
 bool gameButtonPressed() {
     return digitalRead(board::GameButtonPin) == LOW;
+}
+
+void finishLedTest(bool returnToRoot) {
+    if (!ledTest.isActive()) return;
+    ledTest.stop();
+    ledTestScreenDirty = false;
+    leds::clear(); // Clear the complete 100-pixel buffer, including the tail.
+    renderer.giveBackDisplay();
+    if (returnToRoot) menuMgr.resetMenu(true);
+}
+
+void printLedTestRow(uint8_t row, const char* text) {
+    char line[17];
+    ui::blankRow(line, sizeof(line), 16, ' ');
+    ui::copyClipped(line, sizeof(line), 0, text, 16);
+    lcd.setCursor(0, row);
+    lcd.print(line);
+}
+
+void renderLedTest(unsigned int, RenderPressMode) {
+    if (!ledTest.isActive() || !ledTestScreenDirty) return;
+    // Mark clean before LCD writes: they can yield to an input task. A new
+    // click during the draw marks it dirty again for the next renderer tick.
+    ledTestScreenDirty = false;
+    char position[17];
+    ledTest.formatPosition(position, sizeof(position));
+    lcd.noCursor();
+    printLedTestRow(0, position);
+    printLedTestRow(1, "Gomb=lep Tart=ki");
 }
 
 void drawMode() {
@@ -76,7 +109,15 @@ void synchronizeDebugView(uint32_t now) {
 void update() {
     const uint32_t now = millis();
     menuInput::update(now);
+    if (ledTest.isActive() && menuMgr.getCurrentMenu() != &menuBackLedStrip)
+        finishLedTest(false);
     synchronizeDebugView(now);
+    // Display takeover does not run tcMenu's normal inactivity countdown.
+    // Use the same two-minute limit here, renewed only by a step click.
+    if (ledTest.hasTimedOut(now)) {
+        finishLedTest(true);
+        synchronizeDebugView(now);
+    }
     diagnostics::setButtonTestEnabled(debugViewing && menuMgr.getCurrentMenu() == &menuButtonDebug, now);
     if (diagnostics::updateButtons(now)) menuButtonDebug.setChanged(true);
     if (controller.update(now, gameButtonPressed())) leds::draw(cyclone);
@@ -130,17 +171,50 @@ void run() {
 
 void playGame() {
     if (!initialized) return;
+    finishLedTest(false);
     if (controller.select(app::Mode::Cyclone, millis(), gameButtonPressed()))
         drawMode();
 }
 
 void restart() {
+    finishLedTest(false);
     if (initialized && controller.restart(millis(), gameButtonPressed())) drawMode();
+}
+
+void startLedTest() {
+    if (!initialized || menuMgr.getCurrentMenu() != &menuBackLedStrip) return;
+    const uint32_t now = millis();
+    synchronizeDebugView(now);
+    diagnostics::setButtonTestEnabled(false, now);
+    // The menu offset maps raw 0..99 to an actual count of 1..100.
+    ledTest.start(static_cast<uint16_t>(menuLedCount.getIntValueIncludingOffset()), now);
+    ledTestScreenDirty = true;
+    renderer.takeOverDisplay(renderLedTest);
+    leds::drawTest(ledTest);
+}
+
+bool isLedTestActive() {
+    return ledTest.isActive();
+}
+
+bool handleLedTestButton(bool held) {
+    if (!ledTest.isActive()) return false;
+    if (held) {
+        finishLedTest(false);
+    } else {
+        ledTest.step(millis());
+        ledTestScreenDirty = true;
+        renderer.menuAltered();
+        leds::drawTest(ledTest);
+    }
+    return true; // A step/exit click must not also select a normal menu item.
 }
 
 void refreshDiagnostics() {
     char status[16];
-    if (controller.mode() == app::Mode::Debug) {
+    if (ledTest.isActive()) {
+        snprintf(status, sizeof(status), "LED teszt");
+    } else if (controller.mode() == app::Mode::Debug) {
         snprintf(status, sizeof(status), "Debug");
     } else {
         switch (cyclone.state()) {
