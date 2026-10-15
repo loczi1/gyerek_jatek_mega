@@ -9,7 +9,8 @@ namespace debug {
 
 constexpr uint32_t ButtonDebounceMs = 30;
 constexpr uint8_t ButtonSummaryRows = 4;
-// Exclude UART D0/1, LED D2, buzzer D5, status D13, I2C D20/21, menu D53
+// Exclude UART D0/1, the configured strip pin, buzzer D5, status D13,
+// I2C D20/21, menu D53
 // and analog joystick A9. Other analog pins work as GPIO while testing.
 constexpr uint8_t ButtonCandidateCount = board::GpioPinCount - 9;
 constexpr uint8_t ButtonDebugRowCount = ButtonSummaryRows + ButtonCandidateCount;

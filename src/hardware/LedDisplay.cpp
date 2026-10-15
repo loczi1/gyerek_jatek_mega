@@ -1,11 +1,12 @@
 #include "LedDisplay.h"
 #include "config/BoardConfig.h"
+#include "config/PanelConfig.h"
 #include <FastLED.h>
 
 namespace leds {
 namespace {
 
-// One controller owns D2 for both the 75-pixel game and up to 100 test pixels.
+// One controller owns the workbook strip pin for the game and strip test.
 // Every frame clears the tail, so test pixels cannot leak into gameplay.
 CRGB pixels[board::LedStripCapacity];
 static_assert(board::LedStripCapacity >= game::TotalLedCount, "LED buffer too small for the game");
@@ -70,6 +71,15 @@ void draw(const game::CycloneGame& currentGame) {
             drawScore(currentGame.scoreLeds());
             break;
     }
+    FastLED.show();
+}
+
+void drawPanel(const game::PanelGames& currentGame) {
+    fill_solid(pixels, board::LedStripCapacity, CRGB::Black);
+    FastLED.setBrightness(board::GameBrightness);
+    const uint8_t pixel = board::panelStripPixel(currentGame.litChannel());
+    if (pixel > 0 && pixel <= board::LedStripCapacity)
+        pixels[pixel - 1] = CHSV(currentGame.hue(), 255, 255);
     FastLED.show();
 }
 

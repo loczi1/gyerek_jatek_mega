@@ -30,7 +30,20 @@ extern SafeLiquidCrystalRenderer renderer;
 
 
 // Global Menu Item exports
+extern SubMenuItem menuLevel1;
+extern SubMenuItem menuLevel2;
+extern SubMenuItem menuLevel3;
+extern SubMenuItem menuLevel4;
+extern SubMenuItem menuLevel5;
+extern BackMenuItem menuBackLevel1;
+extern BackMenuItem menuBackLevel2;
+extern BackMenuItem menuBackLevel3;
+extern BackMenuItem menuBackLevel4;
+extern BackMenuItem menuBackLevel5;
+extern ActionMenuItem menuRandom;
 extern ActionMenuItem menuJatek;
+extern ActionMenuItem menuSimon;
+extern ActionMenuItem menuFlasher;
 extern ActionMenuItem menuRestart;
 extern SubMenuItem menuDebug;
 extern BackMenuItem menuBackDebug;
@@ -39,21 +52,35 @@ extern SubMenuItem menuLedStrip;
 extern BackMenuItem menuBackLedStrip;
 extern AnalogMenuItem menuLedCount;
 extern ActionMenuItem menuStartLedTest;
+extern SubMenuItem menuDigitalOutputs;
+extern BackMenuItem menuBackDigitalOutputs;
+extern TextMenuItem menuDigitalOutputStatus;
+extern ActionMenuItem menuNextDigitalOutputPin;
+extern ActionMenuItem menuPreviousDigitalOutputPin;
+extern ActionMenuItem menuSetDigitalOutputLow;
+extern ActionMenuItem menuSetDigitalOutputHigh;
 extern ListRuntimeMenuItem menuDigitalInputs;
 extern ListRuntimeMenuItem menuAnalogInputs;
 extern TextMenuItem menuStatus;
 extern ListRuntimeMenuItem menuSystemChecks;
 
 // Provide a wrapper to get hold of the root menu item and export setupMenu
-inline MenuItem& rootMenuItem() { return menuJatek; }
+inline MenuItem& rootMenuItem() { return menuLevel1; }
 void setupMenu();
 
 // Callback functions must always include CALLBACK_FUNCTION after the return type
 #define CALLBACK_FUNCTION
 
 void CALLBACK_FUNCTION Jatek(int id);
+void CALLBACK_FUNCTION RandomGame(int id);
+void CALLBACK_FUNCTION SimonGame(int id);
+void CALLBACK_FUNCTION FlasherGame(int id);
 void CALLBACK_FUNCTION Restart(int id);
 void CALLBACK_FUNCTION StartLedTest(int id);
+void CALLBACK_FUNCTION NextDigitalOutputPin(int id);
+void CALLBACK_FUNCTION PreviousDigitalOutputPin(int id);
+void CALLBACK_FUNCTION SetDigitalOutputLow(int id);
+void CALLBACK_FUNCTION SetDigitalOutputHigh(int id);
 int fnButtonDebugRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);
 int fnDigitalInputsRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);
 int fnAnalogInputsRtCall(RuntimeMenuItem* item, uint8_t row, RenderFnMode mode, char* buffer, int bufferSize);

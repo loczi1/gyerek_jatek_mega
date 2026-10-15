@@ -9,12 +9,48 @@ void CALLBACK_FUNCTION Jatek(int) {
     application::playGame();
 }
 
+void CALLBACK_FUNCTION RandomGame(int) {
+    application::playRandom();
+}
+
+void CALLBACK_FUNCTION SimonGame(int) {
+    application::playSimon();
+}
+
+void CALLBACK_FUNCTION FlasherGame(int) {
+    application::playFlasher();
+}
+
 void CALLBACK_FUNCTION Restart(int) {
     application::restart();
 }
 
 void CALLBACK_FUNCTION StartLedTest(int) {
     application::startLedTest();
+}
+
+void CALLBACK_FUNCTION NextDigitalOutputPin(int) {
+    diagnostics::setDigitalOutputTestEnabled(true);
+    diagnostics::selectNextDigitalOutput();
+    application::refreshDiagnostics();
+}
+
+void CALLBACK_FUNCTION PreviousDigitalOutputPin(int) {
+    diagnostics::setDigitalOutputTestEnabled(true);
+    diagnostics::selectPreviousDigitalOutput();
+    application::refreshDiagnostics();
+}
+
+void CALLBACK_FUNCTION SetDigitalOutputLow(int) {
+    diagnostics::setDigitalOutputTestEnabled(true);
+    diagnostics::setSelectedDigitalOutput(false);
+    application::refreshDiagnostics();
+}
+
+void CALLBACK_FUNCTION SetDigitalOutputHigh(int) {
+    diagnostics::setDigitalOutputTestEnabled(true);
+    diagnostics::setSelectedDigitalOutput(true);
+    application::refreshDiagnostics();
 }
 
 namespace {

@@ -1,4 +1,6 @@
 #include "test_input.h"
+#include "debug/DigitalOutputTester.h"
+#include "debug/InputMonitor.h"
 #include "ui/JoystickRepeat.h"
 #include "config/NavigationConfig.h"
 #include "debug/ButtonTester.h"
@@ -20,6 +22,33 @@ bool pressed[board::GpioPinCount];
 unsigned int reads[board::GpioPinCount];
 unsigned int enables[board::GpioPinCount];
 unsigned int disables[board::GpioPinCount];
+unsigned int outputWrites[board::DigitalPinCount];
+unsigned int outputResets[board::DigitalPinCount];
+bool outputHigh[board::DigitalPinCount];
+constexpr uint8_t UnusedDigitalPin = 6;
+
+bool hasInitialPullup(uint8_t pin) {
+    return pin < board::DigitalPinCount && debug::canTestButton(pin) &&
+        (pin == board::GameButtonPin || board::isWorkbookDigitalInput(pin));
+}
+
+uint8_t buttonRowForPin(uint8_t pin) {
+    for (uint8_t index = 0; index < debug::ButtonCandidateCount; ++index) {
+        if (debug::buttonCandidatePin(index) == pin)
+            return debug::ButtonSummaryRows + index;
+    }
+    CHECK(false);
+    return 255;
+}
+
+void checkOutputStatus(const debug::DigitalOutputTester& tester, uint8_t pin,
+                       const char* state) {
+    char text[16];
+    char expected[16];
+    tester.formatStatus(text, sizeof(text));
+    snprintf(expected, sizeof(expected), "D%u %s", static_cast<unsigned int>(pin), state);
+    CHECK(strcmp(text, expected) == 0);
+}
 
 debug::ButtonPinMode readMode(uint8_t pin) {
     CHECK(pin < board::GpioPinCount);
@@ -40,6 +69,30 @@ bool readPressed(uint8_t pin) {
     CHECK(pinModes[pin] == debug::ButtonPinMode::PullupInput);
     ++reads[pin];
     return pressed[pin];
+}
+
+void writeOutput(uint8_t pin, bool high) {
+    CHECK(debug::canTestDigitalOutput(pin));
+    ++outputWrites[pin];
+    outputHigh[pin] = high;
+}
+
+void resetOutput(uint8_t pin) {
+    CHECK(debug::canTestDigitalOutput(pin));
+    ++outputResets[pin];
+    outputHigh[pin] = false;
+}
+
+void writeLamp(uint8_t pin, bool high) {
+    writeOutput(pin, high);
+    pinModes[pin] = debug::ButtonPinMode::Output;
+}
+
+void restoreLamp(uint8_t pin, bool pullup) {
+    CHECK(pinModes[pin] == debug::ButtonPinMode::Output);
+    resetOutput(pin);
+    pinModes[pin] = pullup ? debug::ButtonPinMode::PullupInput
+                          : debug::ButtonPinMode::FloatingInput;
 }
 
 void arm(ui::JoystickRepeat& repeat, uint32_t now = 0) {
@@ -187,7 +240,8 @@ void testInvalidJoystickADCRequiresRearming() {
 }
 
 void testButtonCandidatesExcludePeripheralAndMenuPins() {
-    const uint8_t excluded[] = {0, 1, 2, 5, 13, 20, 21, 53,
+    const uint8_t excluded[] = {0, 1, board::LedDataPin, board::BuzzerPin,
+        board::StatusLedPin, 20, 21, board::MenuButtonPin,
         board::FirstAnalogGpioPin + board::MenuJoystickChannel};
     debug::PinSet candidates;
     for (uint8_t index = 0; index < debug::ButtonCandidateCount; ++index) {
@@ -217,7 +271,7 @@ void testButtonTestAddsAndRestoresOnlyMissingPullups() {
     tester.setEnabled(false, 20);
     tester.setEnabled(false, 21);
     for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin) {
-        const bool existingPullup = pin >= 46 && pin <= 52;
+        const bool existingPullup = hasInitialPullup(pin);
         if (debug::canTestButton(pin)) {
             CHECK(enables[pin] == (existingPullup ? 0U : 1U));
             CHECK(disables[pin] == (existingPullup ? 0U : 1U));
@@ -230,33 +284,33 @@ void testButtonTestAddsAndRestoresOnlyMissingPullups() {
 }
 
 void testButtonScanSkipsAnAlreadyConfiguredOutput() {
-    pinModes[4] = debug::ButtonPinMode::Output;
-    pressed[4] = true;
+    pinModes[UnusedDigitalPin] = debug::ButtonPinMode::Output;
+    pressed[UnusedDigitalPin] = true;
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, 0);
     CHECK(tester.testedCount() == 60);
     tester.update(1);
     tester.update(31);
     CHECK(tester.pressedCount() == 0);
-    CHECK(reads[4] == 0 && enables[4] == 0);
+    CHECK(reads[UnusedDigitalPin] == 0 && enables[UnusedDigitalPin] == 0);
     char text[16];
-    tester.formatValue(debug::ButtonSummaryRows + 1, text, sizeof(text)); // D4 row.
+    tester.formatValue(buttonRowForPin(UnusedDigitalPin), text, sizeof(text));
     CHECK(strcmp(text, "OUT") == 0);
     tester.setEnabled(false, 40);
-    CHECK(pinModes[4] == debug::ButtonPinMode::Output);
+    CHECK(pinModes[UnusedDigitalPin] == debug::ButtonPinMode::Output);
 }
 
 void testNewOutputOwnerCannotBeOverwrittenOnTestExit() {
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, 0);
-    CHECK(enables[4] == 1);
-    pinModes[4] = debug::ButtonPinMode::Output;
+    CHECK(enables[UnusedDigitalPin] == 1);
+    pinModes[UnusedDigitalPin] = debug::ButtonPinMode::Output;
     CHECK(tester.update(10));
     CHECK(tester.testedCount() == 60);
-    CHECK(reads[4] == 0);
+    CHECK(reads[UnusedDigitalPin] == 0);
     tester.setEnabled(false, 20);
-    CHECK(disables[4] == 0);
-    CHECK(pinModes[4] == debug::ButtonPinMode::Output);
+    CHECK(disables[UnusedDigitalPin] == 0);
+    CHECK(pinModes[UnusedDigitalPin] == debug::ButtonPinMode::Output);
 }
 
 void testButtonPressAndReleaseAreDebounced() {
@@ -289,8 +343,10 @@ void testLastButtonPressRemainsVisibleAfterRelease() {
     tester.update(32);
     CHECK(tester.update(62));
     char text[16];
+    char expected[16];
     tester.formatValue(0, text, sizeof(text));
-    CHECK(strcmp(text, "D51") == 0);
+    snprintf(expected, sizeof(expected), "D%u", static_cast<unsigned int>(board::GameButtonPin));
+    CHECK(strcmp(text, expected) == 0);
     tester.formatValue(1, text, sizeof(text));
     CHECK(strcmp(text, "NINCS") == 0);
     pressed[47] = true;
@@ -360,6 +416,186 @@ void testButtonTestDisabledAndReentryLifecycle() {
     CHECK(!tester.update(1040));
 }
 
+void testDigitalOutputCandidatesComeFromWorkbookAndSkipReservedPins() {
+    uint8_t expectedCount = 0;
+    for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin) {
+        bool workbookOutput = false;
+        for (const generated::pins::PinDefinition& definition : generated::pins::PinTable) {
+            if (definition.type == generated::pins::PinType::DigitalOut &&
+                (definition.activeLevel == generated::pins::ActiveLevel::High ||
+                 definition.activeLevel == generated::pins::ActiveLevel::Low) &&
+                definition.primaryPin == pin)
+                workbookOutput = true;
+        }
+        const bool expected = workbookOutput && debug::digitalRole(pin) == debug::DigitalRole::Input;
+        CHECK(debug::canTestDigitalOutput(pin) == expected);
+        if (expected) CHECK(debug::digitalOutputCandidatePin(expectedCount++) == pin);
+    }
+    CHECK(expectedCount > 1);
+    CHECK(debug::digitalOutputCandidateCount() == expectedCount);
+    CHECK(debug::digitalOutputCandidatePin(expectedCount) == 255);
+    CHECK(!debug::canTestDigitalOutput(board::LedDataPin));
+    CHECK(!debug::canTestDigitalOutput(board::GameButtonPin));
+    CHECK(!debug::canTestDigitalOutput(board::MenuButtonPin));
+    CHECK(!debug::canTestDigitalOutput(0) && !debug::canTestDigitalOutput(1));
+    CHECK(!debug::canTestDigitalOutput(255));
+}
+
+void testDigitalOutputDriveSelectionAndResetAreScoped() {
+    debug::DigitalOutputTester tester(writeOutput, resetOutput);
+    const uint8_t pin = debug::digitalOutputCandidatePin(0);
+    char text[16];
+    tester.formatStatus(text, sizeof(text));
+    CHECK(strcmp(text, "NINCS") == 0);
+    CHECK(!tester.driveSelected(true));
+    tester.setEnabled(true);
+    checkOutputStatus(tester, pin, "---");
+    CHECK(tester.driveSelected(true));
+    checkOutputStatus(tester, pin, "HIGH");
+    CHECK(outputWrites[pin] == 1);
+    CHECK(outputHigh[pin]);
+    tester.setEnabled(true);
+    CHECK(outputWrites[pin] == 1);
+    CHECK(tester.driveSelected(false));
+    checkOutputStatus(tester, pin, "LOW");
+    CHECK(outputWrites[pin] == 2);
+    CHECK(!outputHigh[pin]);
+    tester.setEnabled(false);
+    tester.setEnabled(false);
+    CHECK(outputResets[pin] == 1);
+    CHECK(!tester.driveSelected(true) && !tester.selectNext());
+    tester.formatStatus(text, sizeof(text));
+    CHECK(strcmp(text, "NINCS") == 0);
+    tester.setEnabled(true);
+    checkOutputStatus(tester, pin, "---");
+    tester.setEnabled(false);
+    CHECK(outputResets[pin] == 1);
+}
+
+void testDigitalOutputSelectionWrapsAndResetsOnlyDrivenPins() {
+    debug::DigitalOutputTester tester(writeOutput, resetOutput);
+    const uint8_t count = debug::digitalOutputCandidateCount();
+    const uint8_t first = debug::digitalOutputCandidatePin(0);
+    const uint8_t last = debug::digitalOutputCandidatePin(count - 1);
+    tester.setEnabled(true);
+    CHECK(tester.driveSelected(true));
+    CHECK(tester.selectNext());
+    CHECK(outputResets[first] == 1 && !outputHigh[first]);
+    checkOutputStatus(tester, debug::digitalOutputCandidatePin(1), "---");
+    for (uint8_t index = 2; index < count; ++index) {
+        CHECK(tester.selectNext());
+        CHECK(tester.selectedPin() == debug::digitalOutputCandidatePin(index));
+    }
+    CHECK(tester.selectNext() && tester.selectedPin() == first);
+    CHECK(tester.selectPrevious() && tester.selectedPin() == last);
+    CHECK(tester.driveSelected(true));
+    tester.setEnabled(false);
+    CHECK(outputResets[first] == 1 && outputResets[last] == 1);
+    CHECK(!outputHigh[last]);
+    for (uint8_t index = 1; index < count - 1; ++index) {
+        const uint8_t pin = debug::digitalOutputCandidatePin(index);
+        CHECK(outputWrites[pin] == 0 && outputResets[pin] == 0);
+    }
+}
+
+void testWorkbookInputsIncludeRemappedGameAndBothSwitchContacts() {
+    CHECK(board::isWorkbookDigitalInput(board::GameButtonPin));
+    const generated::pins::PinDefinition contacts =
+        generated::pins::definition(generated::pins::ControlId::Sw06);
+    CHECK(contacts.secondaryPin != generated::pins::InvalidPin);
+    CHECK(board::isWorkbookDigitalInput(contacts.primaryPin));
+    CHECK(board::isWorkbookDigitalInput(contacts.secondaryPin));
+    CHECK(!board::isWorkbookDigitalInput(UnusedDigitalPin));
+    CHECK(!board::isWorkbookDigitalInput(board::DigitalPinCount));
+    CHECK(!board::isWorkbookDigitalInput(255));
+    CHECK(board::PotentiometerChannel ==
+        generated::pins::pinNumber(generated::pins::ControlId::Pot1));
+    CHECK(board::PotentiometerChannel < board::AnalogChannelCount);
+    for (const generated::pins::IlluminatedSwitchDefinition& pair : generated::pins::IkarusSwitches) {
+        const uint8_t input = generated::pins::pinNumber(pair.inputControl);
+        const uint8_t led = generated::pins::pinNumber(pair.ledControl);
+        CHECK(input != led);
+        CHECK(board::isWorkbookDigitalInput(input));
+        CHECK(!board::isWorkbookDigitalInput(led));
+        CHECK(debug::canTestDigitalOutput(led));
+    }
+}
+
+void testIkarusSwitchInputDoesNotAutomaticallyDriveItsLed() {
+    debug::ButtonTester tester(readMode, setPullup, readPressed);
+    tester.setEnabled(true, 0);
+    const uint8_t input = generated::pins::pinNumber(generated::pins::IkarusSwitches[0].inputControl);
+    pressed[input] = true;
+    CHECK(!tester.update(1));
+    CHECK(tester.update(31));
+    CHECK(tester.isPressed(input));
+    tester.setEnabled(false, 32);
+    for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin)
+        CHECK(outputWrites[pin] == 0 && outputResets[pin] == 0);
+}
+
+void testLampMetadataKeepsStripSeparateFromGpio() {
+    CHECK(generated::pins::LampPairCount == 22);
+    for (const auto& pair : generated::pins::LampPairs) {
+        const auto input = generated::pins::definition(pair.inputControl);
+        const auto lamp = generated::pins::definition(pair.lampControl);
+        CHECK(input.type == generated::pins::PinType::DigitalIn);
+        CHECK(lamp.type == generated::pins::PinType::DigitalOut);
+        if (lamp.activeLevel == generated::pins::ActiveLevel::Ws2812b) {
+            CHECK(lamp.primaryPin == board::LedDataPin);
+            CHECK(!debug::canTestDigitalOutput(lamp.primaryPin));
+        } else {
+            CHECK(lamp.activeLevel == generated::pins::ActiveLevel::High);
+            CHECK(!debug::digitalOutputInactiveHigh(lamp.primaryPin));
+        }
+    }
+}
+
+void testButtonLampGuardDrivesLowAndRestoresInputs() {
+    debug::ButtonLampGuard lamps(readMode, writeLamp, restoreLamp);
+    debug::ButtonTester buttons(readMode, setPullup, readPressed);
+    const uint8_t pullupPin = debug::digitalOutputCandidatePin(0);
+    pinModes[pullupPin] = debug::ButtonPinMode::PullupInput;
+    lamps.setEnabled(true);
+    lamps.setEnabled(true);
+    buttons.setEnabled(true, 0);
+    CHECK(buttons.testedCount() == 61 - debug::digitalOutputCandidateCount());
+    for (uint8_t i = 0; i < debug::digitalOutputCandidateCount(); ++i) {
+        const uint8_t pin = debug::digitalOutputCandidatePin(i);
+        CHECK(pinModes[pin] == debug::ButtonPinMode::Output);
+        CHECK(outputWrites[pin] == 1 && !outputHigh[pin]);
+        CHECK(enables[pin] == 0);
+    }
+    buttons.setEnabled(false, 1);
+    lamps.setEnabled(false);
+    lamps.setEnabled(false);
+    for (uint8_t i = 0; i < debug::digitalOutputCandidateCount(); ++i) {
+        const uint8_t pin = debug::digitalOutputCandidatePin(i);
+        CHECK(outputResets[pin] == 1);
+        CHECK(pinModes[pin] == (pin == pullupPin ? debug::ButtonPinMode::PullupInput
+                                               : debug::ButtonPinMode::FloatingInput));
+    }
+    lamps.setEnabled(true);
+    lamps.setEnabled(false);
+    CHECK(outputWrites[pullupPin] == 2 && outputResets[pullupPin] == 2);
+    CHECK(outputWrites[board::LedDataPin] == 0);
+}
+
+void testButtonLampGuardPreservesOtherOwners() {
+    debug::ButtonLampGuard lamps(readMode, writeLamp, restoreLamp);
+    const uint8_t existing = debug::digitalOutputCandidatePin(0);
+    const uint8_t changed = debug::digitalOutputCandidatePin(1);
+    pinModes[existing] = debug::ButtonPinMode::Output;
+    outputHigh[existing] = true;
+    lamps.setEnabled(true);
+    CHECK(outputWrites[existing] == 0 && outputHigh[existing]);
+    pinModes[changed] = debug::ButtonPinMode::PullupInput;
+    lamps.setEnabled(false);
+    CHECK(outputResets[existing] == 0 && outputHigh[existing]);
+    CHECK(outputResets[changed] == 0);
+    CHECK(pinModes[changed] == debug::ButtonPinMode::PullupInput);
+}
+
 void testAllButtonRowsAreBoundedAndStable() {
     debug::ButtonTester tester(readMode, setPullup, readPressed);
     tester.setEnabled(true, 0);
@@ -424,8 +660,10 @@ void testAnalogAndDigitalNamesShareButtonReport() {
     tester.update(1);
     CHECK(tester.update(31));
     char text[16];
+    char expected[16];
     tester.formatValue(1, text, sizeof(text));
-    CHECK(strcmp(text, "D51 A0 A15") == 0);
+    snprintf(expected, sizeof(expected), "D%u A0 A15", static_cast<unsigned int>(board::GameButtonPin));
+    CHECK(strcmp(text, expected) == 0);
     for (uint8_t row = debug::ButtonSummaryRows; row < debug::ButtonDebugRowCount; ++row) {
         const uint8_t pin = debug::buttonCandidatePin(row - debug::ButtonSummaryRows);
         tester.formatName(row, text, sizeof(text));
@@ -496,6 +734,14 @@ const Test Tests[] = {
     {"button held on test entry is detected", testButtonTestWorksWhenButtonHeldOnEntry},
     {"button tester debounce survives timer rollover", testButtonDebounceTimerRollover},
     {"button test disable and reentry lifecycle", testButtonTestDisabledAndReentryLifecycle},
+    {"digital output candidates follow workbook metadata", testDigitalOutputCandidatesComeFromWorkbookAndSkipReservedPins},
+    {"digital output drive and reset are scoped", testDigitalOutputDriveSelectionAndResetAreScoped},
+    {"multiple workbook outputs wrap and reset safely", testDigitalOutputSelectionWrapsAndResetsOnlyDrivenPins},
+    {"workbook inputs retain remapped game and switch contacts", testWorkbookInputsIncludeRemappedGameAndBothSwitchContacts},
+    {"Ikarus input and LED output remain independent", testIkarusSwitchInputDoesNotAutomaticallyDriveItsLed},
+    {"lamp metadata separates strip and transistor outputs", testLampMetadataKeepsStripSeparateFromGpio},
+    {"button lamp guard drives LOW and restores inputs", testButtonLampGuardDrivesLowAndRestoresInputs},
+    {"button lamp guard preserves other pin owners", testButtonLampGuardPreservesOtherOwners},
     {"all button report rows honor buffer bounds", testAllButtonRowsAreBoundedAndStable},
     {"button tester with missing IO is safe", testButtonTestWithoutReadersIsSafe},
     {"all available analog GPIO buttons are detected", testAllAvailableAnalogButtonsAreDetected},
@@ -509,10 +755,15 @@ const Test Tests[] = {
 size_t runInputTests() {
     for (const Test& test : Tests) {
         for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin) {
-            pinModes[pin] = pin >= 46 && pin <= 52
+            pinModes[pin] = hasInitialPullup(pin)
                 ? debug::ButtonPinMode::PullupInput : debug::ButtonPinMode::FloatingInput;
             pressed[pin] = false;
             reads[pin] = enables[pin] = disables[pin] = 0;
+            if (pin < board::DigitalPinCount) {
+                outputWrites[pin] = 0;
+                outputResets[pin] = 0;
+                outputHigh[pin] = false;
+            }
         }
         test.run();
         printf("PASS: %s\n", test.name);

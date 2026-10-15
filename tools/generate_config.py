@@ -25,6 +25,7 @@ class PinRow:
     info: str
     raw_pin: str
     pin_type: str
+    active_level: str = ""
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,13 @@ class BindingRow:
 class WorkbookData:
     pins: tuple[PinRow, ...]
     bindings: tuple[BindingRow, ...]
+
+
+@dataclass(frozen=True)
+class IlluminatedSwitchRow:
+    number: int
+    input_control_id: str
+    led_control_id: str
 
 
 def column_index(reference: str) -> int:
@@ -145,6 +153,7 @@ def parse_pins(rows: list[dict[str, str]]) -> list[PinRow]:
             info=row.get("Info", "").strip(),
             raw_pin=row.get("ArduinoPin", "").strip(),
             pin_type=row.get("Type", "").strip() or "Unknown",
+            active_level=row.get("ActiveLevel", "").strip().upper(),
         ))
     return parsed
 
@@ -180,16 +189,74 @@ def validate(pins: tuple[PinRow, ...], bindings: tuple[BindingRow, ...]) -> None
     if not pins:
         raise ValueError("PinMap_export must contain at least one control")
     pin_ids = set()
+    strip_pixels: dict[int, str] = {}
     for pin in pins:
         if pin.control_id in pin_ids:
             raise ValueError(f"Duplicate control ID in PinMap_export: {pin.control_id}")
         pin_ids.add(pin.control_id)
+        if pin.active_level not in ("", "HIGH", "LOW", "WS2812B"):
+            raise ValueError(f"Invalid ActiveLevel for '{pin.control_id}': {pin.active_level}")
+        if pin.active_level and pin_type_name(pin) != "DigitalOut":
+            raise ValueError(f"ActiveLevel requires DigitalOut: {pin.control_id}")
+        pixel = parse_strip_pixel(pin)
+        if pixel:
+            if pixel in strip_pixels:
+                raise ValueError(
+                    f"Duplicate WS2812B strip pixel {pixel}: "
+                    f"{strip_pixels[pixel]} and {pin.control_id}")
+            strip_pixels[pixel] = pin.control_id
     if not bindings:
         raise ValueError("GameControls must contain at least one binding")
     for binding in bindings:
         if binding.control_id not in pin_ids:
             raise ValueError(
                 f"GameControls references unknown control '{binding.control_id}' for {binding.game_id}")
+
+    derive_lamp_pairs(pins)
+    switches = derive_ikarus_switches(pins)
+    if switches:
+        constants = derive_board_constants(WorkbookData(pins, bindings))
+        reserved = {0, 1, 13}  # UART and the on-board status LED.
+        for key in ("LedDataPin", "BuzzerPin", "MenuButtonPin", "GameButtonPin",
+                    "LcdI2cSdaPin", "LcdI2cSclPin"):
+            if key in constants:
+                reserved.add(int(constants[key]))
+        inputs = {
+            number for pin in pins if pin_type_name(pin) == "DigitalIn"
+            for number in extract_pin_triplet(pin.raw_pin) if number != INVALID_PIN
+        }
+        pin_by_id = {pin.control_id: pin for pin in pins}
+        led_pins = set()
+        for switch in switches:
+            led = pin_by_id[switch.led_control_id]
+            primary, secondary, tertiary = extract_pin_triplet(led.raw_pin)
+            if primary >= 54 or secondary != INVALID_PIN or tertiary != INVALID_PIN:
+                raise ValueError(f"Ikarus LED '{led.control_id}' requires one Mega digital pin D0-D53")
+            if primary in reserved:
+                raise ValueError(f"Ikarus LED '{led.control_id}' uses reserved Mega D{primary}; choose a free GPIO")
+            if primary in inputs:
+                raise ValueError(f"Ikarus LED '{led.control_id}' shares D{primary} with a digital input")
+            if primary in led_pins:
+                raise ValueError(f"Ikarus LED '{led.control_id}' shares D{primary} with another Ikarus LED")
+            led_pins.add(primary)
+
+    constants = derive_board_constants(WorkbookData(pins, bindings))
+    reserved = {0, 1, 13}
+    reserved.update(int(constants[key]) for key in
+                    ("LedDataPin", "BuzzerPin", "MenuButtonPin", "GameButtonPin",
+                     "LcdI2cSdaPin", "LcdI2cSclPin") if key in constants)
+    inputs = {number for pin in pins if pin_type_name(pin) == "DigitalIn"
+              for number in extract_pin_triplet(pin.raw_pin) if number != INVALID_PIN}
+    outputs = set()
+    for pin in pins:
+        if pin.active_level not in ("HIGH", "LOW"):
+            continue
+        primary, secondary, tertiary = extract_pin_triplet(pin.raw_pin)
+        if primary >= 54 or secondary != INVALID_PIN or tertiary != INVALID_PIN:
+            raise ValueError(f"Lamp '{pin.control_id}' requires one Mega digital pin D0-D53")
+        if primary in reserved or primary in inputs or primary in outputs:
+            raise ValueError(f"Lamp '{pin.control_id}' uses reserved/shared D{primary}")
+        outputs.add(primary)
 
 
 def parse_level_mask(text: str) -> int:
@@ -231,7 +298,28 @@ def pin_type_name(pin: PinRow) -> str:
     return "Unknown"
 
 
+def parse_strip_pixel(pin: PinRow) -> int:
+    """Return an explicit 1-based strip position, never infer one from prose."""
+    info = pin.info.strip()
+    if pin.active_level != "WS2812B" or not re.fullmatch(r"[+-]?[0-9]+", info):
+        return 0
+    pixel = int(info)
+    if not 1 <= pixel <= 100:
+        raise ValueError(f"WS2812B strip pixel for '{pin.control_id}' must be 1..100: {info}")
+    return pixel
+
+
 def extract_pin_triplet(raw_pin: str) -> tuple[int, int, int]:
+    gpio_list = re.fullmatch(
+        r"\s*((?:d\s*)?\d+(?:\s*,\s*(?:d\s*)?\d+)+)\s*(?:\(.*\))?\s*",
+        raw_pin, flags=re.IGNORECASE)
+    if gpio_list:
+        numbers = [int(re.search(r"\d+", part).group(0))
+                   for part in gpio_list.group(1).split(",")]
+        if len(numbers) > 3:
+            raise ValueError(f"At most three GPIO pins are supported per control: {raw_pin}")
+        return numbers[0], numbers[1], numbers[2] if len(numbers) == 3 else INVALID_PIN
+
     digital_match = re.search(r"\bd\s*(\d+)\b", raw_pin, flags=re.IGNORECASE)
     x_match = re.search(r"\bx\s*=\s*a\s*(\d+)\b", raw_pin, flags=re.IGNORECASE)
     y_match = re.search(r"\by\s*=\s*a\s*(\d+)\b", raw_pin, flags=re.IGNORECASE)
@@ -250,13 +338,76 @@ def extract_pin_triplet(raw_pin: str) -> tuple[int, int, int]:
     return INVALID_PIN, INVALID_PIN, INVALID_PIN
 
 
+def lamp_pair_key(control_id: str) -> str | None:
+    match = re.fullmatch(r"(?:BTN|SW|DIO|LED)\d+[-_](.+)", control_id,
+                         flags=re.IGNORECASE)
+    if not match:
+        return None
+    # Workbook spelling: BTN07-down-5_1 pairs with LED03-strip-down5_1.
+    suffix = re.sub(r"^strip[-_]", "", match.group(1), flags=re.IGNORECASE)
+    return normalize_upper_identifier(suffix)
+
+
+def derive_lamp_pairs(pins: tuple[PinRow, ...]) -> tuple[tuple[str, str], ...]:
+    groups: dict[str, dict[str, str]] = {}
+    for pin in pins:
+        key = lamp_pair_key(pin.control_id)
+        if key is None:
+            continue
+        role = "input" if re.match(r"^(BTN|SW)", pin.control_id, re.I) else "lamp"
+        expected = "DigitalIn" if role == "input" else "DigitalOut"
+        if pin_type_name(pin) != expected:
+            raise ValueError(f"Lamp pair '{pin.control_id}' must have type {expected}")
+        group = groups.setdefault(key, {})
+        if role in group:
+            raise ValueError(f"Duplicate lamp-pair {role}: {pin.control_id}")
+        group[role] = pin.control_id
+    result = []
+    for key, group in sorted(groups.items()):
+        if "input" not in group or "lamp" not in group:
+            raise ValueError(f"Lamp pair {key} requires both an input and a lamp")
+        result.append((group["input"], group["lamp"]))
+    return tuple(result)
+
+
+def derive_ikarus_switches(pins: tuple[PinRow, ...]) -> tuple[IlluminatedSwitchRow, ...]:
+    pairs: dict[int, dict[str, str]] = {}
+    for pin in pins:
+        match = re.fullmatch(r"(BTN\d+|DIO\d+)[-_]ikarus_(\d+)", pin.control_id,
+                             flags=re.IGNORECASE)
+        if not match:
+            continue
+        number = int(match.group(2))
+        if number < 1 or number > 255:
+            raise ValueError(f"Ikarus switch number must be 1-255: {pin.control_id}")
+        is_input = match.group(1).upper().startswith("BTN")
+        role = "input" if is_input else "led"
+        expected_type = "DigitalIn" if is_input else "DigitalOut"
+        if pin_type_name(pin) != expected_type:
+            raise ValueError(f"Ikarus {role} '{pin.control_id}' must have type {expected_type}")
+        pair = pairs.setdefault(number, {})
+        if role in pair:
+            raise ValueError(f"Duplicate Ikarus {role} for switch {number}")
+        pair[role] = pin.control_id
+    result = []
+    for number, pair in sorted(pairs.items()):
+        if "input" not in pair or "led" not in pair:
+            raise ValueError(f"Ikarus switch {number} requires both a BTN input and a DIO LED")
+        result.append(IlluminatedSwitchRow(number, pair["input"], pair["led"]))
+    return tuple(result)
+
+
 def derive_board_constants(data: WorkbookData) -> dict[str, int | str]:
     pin_by_id = {row.control_id: row for row in data.pins}
-    led_pins = {extract_pin_triplet(row.raw_pin)[0] for row in data.pins if row.control_id.startswith("LED")}
+    led_pins = {extract_pin_triplet(row.raw_pin)[0] for row in data.pins
+                if row.active_level == "WS2812B" or
+                (row.control_id.startswith("LED") and not row.active_level)}
     buzzer = pin_by_id.get("BUZ01")
     joystick = pin_by_id.get("JOY01")
     lcd = pin_by_id.get("LCD01")
     constants: dict[str, int | str] = {}
+    if len(led_pins) > 1:
+        raise ValueError("WS2812B entries must share one strip data pin")
     if len(led_pins) == 1:
         constants["LedDataPin"] = led_pins.pop()
     if buzzer is not None:
@@ -299,12 +450,34 @@ def enum_name(value: str) -> str:
 
 def render_pins_header(data: WorkbookData) -> str:
     board_constants = derive_board_constants(data)
+    switches = derive_ikarus_switches(data.pins)
     control_names = [enum_name(row.control_id) for row in data.pins]
     pin_rows = []
     for row in data.pins:
         primary, secondary, tertiary = extract_pin_triplet(row.raw_pin)
+        active = {"HIGH": "High", "LOW": "Low", "WS2812B": "Ws2812b", "": "Unspecified"}[row.active_level]
         pin_rows.append(
-            f"    PinDefinition{{{primary}, {secondary}, {tertiary}, PinType::{pin_type_name(row)}}}, // {row.control_id}: {row.raw_pin or '-'}")
+            f"    PinDefinition{{{primary}, {secondary}, {tertiary}, PinType::{pin_type_name(row)}, ActiveLevel::{active}, {parse_strip_pixel(row)}}}, // {row.control_id}: {row.raw_pin or '-'}")
+
+    lamp_pairs = derive_lamp_pairs(data.pins)
+    lamp_rows = [
+        f"    LampPairDefinition{{ControlId::{enum_name(input_id)}, ControlId::{enum_name(lamp_id)}}},"
+        for input_id, lamp_id in lamp_pairs
+    ]
+    lamp_table = ("constexpr LampPairDefinition LampPairs[] = {\n" +
+                  "\n".join(lamp_rows) + "\n};\n") if lamp_pairs else ""
+
+    switch_rows = [
+        f"    IlluminatedSwitchDefinition{{{switch.number}, "
+        f"ControlId::{enum_name(switch.input_control_id)}, "
+        f"ControlId::{enum_name(switch.led_control_id)}}},"
+        for switch in switches
+    ]
+    switch_table = (
+        "constexpr IlluminatedSwitchDefinition IkarusSwitches[] = {\n"
+        + "\n".join(switch_rows) + "\n};\n"
+        if switches else ""
+    )
 
     constants = []
     numeric_keys = (
@@ -350,11 +523,15 @@ enum class PinType : uint8_t {{
     Unknown
 }};
 
+enum class ActiveLevel : uint8_t {{ Unspecified, Low, High, Ws2812b }};
+
 struct PinDefinition {{
     uint8_t primaryPin;
     uint8_t secondaryPin;
     uint8_t tertiaryPin;
     PinType type;
+    ActiveLevel activeLevel;
+    uint8_t stripPixel; // 1-based; 0 means unspecified or not a strip lamp.
 }};
 
 constexpr PinDefinition PinTable[] = {{
@@ -368,6 +545,25 @@ constexpr PinDefinition definition(ControlId id) {{
 constexpr uint8_t pinNumber(ControlId id) {{
     return definition(id).primaryPin;
 }}
+
+// The switch contact and its built-in LED are separate electrical controls.
+// These associations do not automatically turn the LEDs on or off.
+struct IlluminatedSwitchDefinition {{
+    uint8_t number;
+    ControlId inputControl;
+    ControlId ledControl;
+}};
+
+{switch_table}
+constexpr uint8_t IkarusSwitchCount = {len(switches)};
+
+struct LampPairDefinition {{
+    ControlId inputControl;
+    ControlId lampControl;
+}};
+
+{lamp_table}
+constexpr uint8_t LampPairCount = {len(lamp_pairs)};
 
 {chr(10).join(constants)}
 

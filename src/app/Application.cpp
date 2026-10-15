@@ -2,6 +2,8 @@
 #include "ModeController.h"
 #include "Gyerek_jatek_arduinomega_menu.h"
 #include "config/BoardConfig.h"
+#include "config/PanelConfig.h"
+#include "debug/ButtonTester.h"
 #include "debug/LedStripTester.h"
 #include "debug/SystemChecks.h"
 #include "hardware/Diagnostics.h"
@@ -14,7 +16,7 @@
 namespace application {
 namespace {
 
-uint8_t pickTarget() {
+uint32_t pickBelow(uint32_t bound) {
     static bool seeded = false;
     if (!seeded) {
         // Mix first-player timing with an optional unconnected analog input.
@@ -22,7 +24,12 @@ uint8_t pickTarget() {
         randomSeed(micros() ^ static_cast<unsigned long>(analogRead(board::EntropyInputPin)));
         seeded = true;
     }
-    return static_cast<uint8_t>(random(game::MinimumTarget, game::MaximumTarget + 1));
+    return static_cast<uint32_t>(random(static_cast<long>(bound)));
+}
+
+uint8_t pickTarget() {
+    return static_cast<uint8_t>(game::MinimumTarget +
+        pickBelow(game::MaximumTarget - game::MinimumTarget + 1));
 }
 
 void playTone(uint16_t frequency, uint32_t durationMs) {
@@ -36,6 +43,12 @@ void stopTone() {
 game::CycloneGame cyclone(pickTarget);
 audio::SoundEffects soundEffects(playTone, stopTone);
 app::ModeController controller(cyclone, soundEffects);
+game::PanelGames panel(pickBelow);
+enum class SelectedGame : uint8_t { None, Cyclone, Random, Simon, Flasher };
+SelectedGame selectedGame = SelectedGame::None;
+MenuItem* gameScope = nullptr;
+uint8_t panelInputs[game::PanelInputCount];
+uint8_t panelInputCount = 0;
 debug::SystemChecks systemChecks;
 debug::LedStripTester ledTest(board::MenuIdleTimeoutSeconds * 1000UL);
 bool ledTestScreenDirty = false;
@@ -47,6 +60,50 @@ bool debugViewing = false;
 
 bool gameButtonPressed() {
     return digitalRead(board::GameButtonPin) == LOW;
+}
+
+void configurePanelInputs() {
+    panelInputCount = 0;
+    for (uint8_t i = 0; i < game::PanelChannelCount; ++i)
+        panelInputs[panelInputCount++] = board::panelInputPin(i);
+    // The remaining real workbook buttons/switch contacts also trigger Random.
+    // Never include joystick/select, peripheral pins, or unconfigured floating GPIO.
+    for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin) {
+        if (!board::isWorkbookDigitalInput(pin) || !debug::canTestButton(pin)) continue;
+        bool duplicate = false;
+        for (uint8_t i = 0; i < panelInputCount; ++i)
+            if (panelInputs[i] == pin) duplicate = true;
+        if (!duplicate && panelInputCount < game::PanelInputCount)
+            panelInputs[panelInputCount++] = pin;
+    }
+}
+
+uint32_t panelPressedMask() {
+    uint32_t mask = 0;
+    for (uint8_t i = 0; i < panelInputCount; ++i) {
+        const uint8_t pin = panelInputs[i];
+        if (!debug::canTestButton(pin)) continue;
+        const uint8_t port = digitalPinToPort(pin);
+        if (port == NOT_A_PIN) continue;
+        const uint8_t bit = digitalPinToBitMask(pin);
+        // Read without digitalRead's PWM side effects; preserve other owners.
+        if ((*portModeRegister(port) & bit) == 0 &&
+            (*portInputRegister(port) & bit) == 0)
+            mask |= uint32_t(1) << i;
+    }
+    return mask;
+}
+
+void stopGames(uint32_t now) {
+    panel.select(game::PanelMode::Disabled, now, 0);
+    controller.select(app::Mode::Debug, now, gameButtonPressed());
+    soundEffects.stop();
+    stopTone(); // Random's timed tone is not owned by SoundEffects.
+    selectedGame = SelectedGame::None;
+    gameScope = nullptr;
+    // Leaving a selected game restores the normal Debug/menu idle timeout.
+    renderer.setResetIntervalTimeSeconds(board::MenuIdleTimeoutSeconds);
+    renderer.menuAltered();
 }
 
 void finishLedTest(bool returnToRoot) {
@@ -79,7 +136,10 @@ void renderLedTest(unsigned int, RenderPressMode) {
 }
 
 void drawMode() {
-    if (controller.mode() == app::Mode::Cyclone) leds::draw(cyclone);
+    if (selectedGame == SelectedGame::Random || selectedGame == SelectedGame::Simon ||
+        selectedGame == SelectedGame::Flasher)
+        leds::drawPanel(panel);
+    else if (selectedGame == SelectedGame::Cyclone) leds::draw(cyclone);
     else leds::clear();
 }
 
@@ -93,13 +153,15 @@ void checkLcd() {
 }
 
 void synchronizeDebugView(uint32_t now) {
-    // Debug is the only submenu at root, so all nested lists belong to it.
-    // Poll navigation rather than installing another tcMenu navigation listener.
-    const bool viewing = !menuMgr.getNavigationStore().isShowingRoot();
+    // Level submenus are not Debug. Runtime lists have their own current pointer.
+    const MenuItem* current = menuMgr.getCurrentMenu();
+    const bool viewing = current == &menuBackDebug || current == &menuButtonDebug ||
+        current == &menuBackLedStrip || current == &menuBackDigitalOutputs ||
+        current == &menuDigitalInputs || current == &menuAnalogInputs ||
+        current == &menuSystemChecks;
     if (viewing == debugViewing) return;
     debugViewing = viewing;
-    controller.select(viewing ? app::Mode::Debug : app::Mode::Cyclone,
-                      now, gameButtonPressed());
+    stopGames(now);
     diagnostics::setEnabled(viewing);
     drawMode();
     if (viewing) checkLcd();
@@ -112,6 +174,10 @@ void update() {
     if (ledTest.isActive() && menuMgr.getCurrentMenu() != &menuBackLedStrip)
         finishLedTest(false);
     synchronizeDebugView(now);
+    if (gameScope && menuMgr.getCurrentMenu() != gameScope) {
+        stopGames(now);
+        drawMode();
+    }
     // Display takeover does not run tcMenu's normal inactivity countdown.
     // Use the same two-minute limit here, renewed only by a step click.
     if (ledTest.hasTimedOut(now)) {
@@ -119,8 +185,27 @@ void update() {
         synchronizeDebugView(now);
     }
     diagnostics::setButtonTestEnabled(debugViewing && menuMgr.getCurrentMenu() == &menuButtonDebug, now);
+    diagnostics::setDigitalOutputTestEnabled(
+        debugViewing && menuMgr.getCurrentMenu() == &menuBackDigitalOutputs);
     if (diagnostics::updateButtons(now)) menuButtonDebug.setChanged(true);
-    if (controller.update(now, gameButtonPressed())) leds::draw(cyclone);
+    if (selectedGame == SelectedGame::Cyclone) {
+        if (controller.update(now, gameButtonPressed())) leds::draw(cyclone);
+    } else if (selectedGame == SelectedGame::Random || selectedGame == SelectedGame::Simon ||
+               selectedGame == SelectedGame::Flasher) {
+        if (panel.update(now, panelPressedMask())) {
+            const game::PanelFeedback feedback = panel.takeFeedback();
+            if (feedback != game::PanelFeedback::None)
+                soundEffects.play(feedback == game::PanelFeedback::Win
+                    ? audio::Effect::Win : audio::Effect::Loss, now);
+            if (selectedGame == SelectedGame::Random) {
+                if (panel.frequency()) playTone(panel.frequency(), 250);
+                else stopTone();
+            } else if (feedback == game::PanelFeedback::None) {
+                soundEffects.stop();
+            }
+            leds::drawPanel(panel);
+        }
+    }
     diagnostics::update();
 
     if (static_cast<uint32_t>(now - lastDiagnosticRefresh) >= board::DiagnosticRefreshMs) {
@@ -130,7 +215,9 @@ void update() {
 }
 
 void updateAudio() {
-    controller.updateAudio(millis());
+    if (selectedGame == SelectedGame::Simon || selectedGame == SelectedGame::Flasher)
+        soundEffects.update(millis());
+    else controller.updateAudio(millis());
 }
 
 } // namespace
@@ -139,6 +226,7 @@ void begin() {
     if (initialized) return;
     Serial.begin(board::SerialBaud);
     diagnostics::begin();
+    configurePanelInputs();
     leds::begin();
     setupMenu();
     // Apply after setupMenu(): setUpdatesPerSecond() resets tcMenu's timeout
@@ -146,7 +234,7 @@ void begin() {
     renderer.setResetIntervalTimeSeconds(board::MenuIdleTimeoutSeconds);
     renderer.menuAltered();
     initialized = true;
-    playGame();
+    stopGames(millis());
     lastDiagnosticRefresh = millis();
     refreshDiagnostics();
 
@@ -172,13 +260,49 @@ void run() {
 void playGame() {
     if (!initialized) return;
     finishLedTest(false);
+    diagnostics::setButtonTestEnabled(false, millis());
+    diagnostics::setDigitalOutputTestEnabled(false);
+    panel.select(game::PanelMode::Disabled, millis(), 0);
+    selectedGame = SelectedGame::Cyclone;
+    gameScope = &menuBackLevel2;
+    renderer.turnOffResetLogic();
+    renderer.menuAltered();
     if (controller.select(app::Mode::Cyclone, millis(), gameButtonPressed()))
         drawMode();
 }
 
+void selectPanelGame(SelectedGame selection, game::PanelMode mode, MenuItem* scope) {
+    if (!initialized) return;
+    finishLedTest(false);
+    const uint32_t now = millis();
+    diagnostics::setButtonTestEnabled(false, now);
+    diagnostics::setDigitalOutputTestEnabled(false);
+    stopGames(now);
+    selectedGame = selection;
+    gameScope = scope;
+    renderer.turnOffResetLogic();
+    renderer.menuAltered();
+    panel.select(mode, now, panelPressedMask());
+    drawMode();
+}
+
+void playRandom() {
+    selectPanelGame(SelectedGame::Random, game::PanelMode::Random, &menuBackLevel1);
+}
+
+void playSimon() {
+    selectPanelGame(SelectedGame::Simon, game::PanelMode::Simon, &menuBackLevel2);
+}
+
+void playFlasher() {
+    selectPanelGame(SelectedGame::Flasher, game::PanelMode::Flasher, &menuBackLevel2);
+}
+
 void restart() {
     finishLedTest(false);
-    if (initialized && controller.restart(millis(), gameButtonPressed())) drawMode();
+    if (!initialized) return;
+    stopGames(millis());
+    drawMode();
 }
 
 void startLedTest() {
@@ -214,8 +338,18 @@ void refreshDiagnostics() {
     char status[16];
     if (ledTest.isActive()) {
         snprintf(status, sizeof(status), "LED teszt");
-    } else if (controller.mode() == app::Mode::Debug) {
+    } else if (debugViewing) {
         snprintf(status, sizeof(status), "Debug");
+    } else if (selectedGame == SelectedGame::Random) {
+        snprintf(status, sizeof(status), "Random");
+    } else if (selectedGame == SelectedGame::Flasher) {
+        snprintf(status, sizeof(status), "Sima villogo");
+    } else if (selectedGame == SelectedGame::Simon) {
+        snprintf(status, sizeof(status), "Simon %u/%u",
+            static_cast<unsigned int>(panel.inputIndex()),
+            static_cast<unsigned int>(panel.sequenceLength()));
+    } else if (selectedGame == SelectedGame::None) {
+        snprintf(status, sizeof(status), "Valassz jatekot");
     } else {
         switch (cyclone.state()) {
             case game::State::Playing:
@@ -227,6 +361,9 @@ void refreshDiagnostics() {
             default: snprintf(status, sizeof(status), "Keszenlet"); break;
         }
     }
+    char digitalOutputStatus[16];
+    diagnostics::formatDigitalOutputStatus(digitalOutputStatus, sizeof(digitalOutputStatus));
+    menuDigitalOutputStatus.setTextValue(digitalOutputStatus, true);
     menuStatus.setTextValue(status, true);
     if (Wire.getWireTimeoutFlag()) systemChecks.recordI2cTimeout();
 

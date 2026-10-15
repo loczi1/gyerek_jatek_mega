@@ -5,12 +5,132 @@
   "items": [
     {
       "parentId": 0,
+      "type": "subMenu",
+      "item": {
+        "secured": false,
+        "name": "Szint 1",
+        "variableName": "Level1",
+        "id": 30,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 30,
       "type": "actionMenu",
       "item": {
-        "name": "Jatek",
+        "name": "Random",
+        "variableName": "Random",
+        "functionName": "RandomGame",
+        "id": 35,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 0,
+      "type": "subMenu",
+      "item": {
+        "secured": false,
+        "name": "Szint 2",
+        "variableName": "Level2",
+        "id": 31,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 31,
+      "type": "actionMenu",
+      "item": {
+        "name": "Cyclon",
         "variableName": "Jatek",
         "functionName": "Jatek",
         "id": 10,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 31,
+      "type": "actionMenu",
+      "item": {
+        "name": "Simon mondja",
+        "variableName": "Simon",
+        "functionName": "SimonGame",
+        "id": 36,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 31,
+      "type": "actionMenu",
+      "item": {
+        "name": "Sima villogo",
+        "variableName": "Flasher",
+        "functionName": "FlasherGame",
+        "id": 37,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 0,
+      "type": "subMenu",
+      "item": {
+        "secured": false,
+        "name": "Szint 3",
+        "variableName": "Level3",
+        "id": 32,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 0,
+      "type": "subMenu",
+      "item": {
+        "secured": false,
+        "name": "Szint 4",
+        "variableName": "Level4",
+        "id": 33,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 0,
+      "type": "subMenu",
+      "item": {
+        "secured": false,
+        "name": "Szint 5",
+        "variableName": "Level5",
+        "id": 34,
         "eepromAddress": -1,
         "readOnly": false,
         "localOnly": false,
@@ -110,6 +230,98 @@
         "id": 22,
         "eepromAddress": -1,
         "functionName": "StartLedTest",
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 7,
+      "type": "subMenu",
+      "item": {
+        "secured": false,
+        "name": "Digitalis ki",
+        "variableName": "DigitalOutputs",
+        "id": 600,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 600,
+      "type": "textItem",
+      "defaultValue": "NINCS",
+      "item": {
+        "textLength": 16,
+        "itemType": "PLAIN_TEXT",
+        "name": "DO allapot",
+        "variableName": "DigitalOutputStatus",
+        "id": 601,
+        "eepromAddress": -1,
+        "readOnly": true,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 600,
+      "type": "actionMenu",
+      "item": {
+        "name": "Kov pin",
+        "variableName": "NextDigitalOutputPin",
+        "id": 602,
+        "eepromAddress": -1,
+        "functionName": "NextDigitalOutputPin",
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 600,
+      "type": "actionMenu",
+      "item": {
+        "name": "Elozo",
+        "variableName": "PreviousDigitalOutputPin",
+        "id": 603,
+        "eepromAddress": -1,
+        "functionName": "PreviousDigitalOutputPin",
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 600,
+      "type": "actionMenu",
+      "item": {
+        "name": "LOW",
+        "variableName": "SetDigitalOutputLow",
+        "id": 604,
+        "eepromAddress": -1,
+        "functionName": "SetDigitalOutputLow",
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 600,
+      "type": "actionMenu",
+      "item": {
+        "name": "HIGH",
+        "variableName": "SetDigitalOutputHigh",
+        "id": 605,
+        "eepromAddress": -1,
+        "functionName": "SetDigitalOutputHigh",
         "readOnly": false,
         "localOnly": false,
         "visible": true,

@@ -10,40 +10,59 @@ namespace pins {
 constexpr uint8_t InvalidPin = 255;
 
 enum class ControlId : uint8_t {
-    Btn01,
-    Btn02,
-    Btn03,
+    Btn01LeftBlue1,
+    Btn02LeftBlue2,
+    Btn03LeftBlue3,
     Btn05,
     Btn06,
-    Btn07,
-    Btn08,
-    Btn09,
-    Btn10,
-    Btn11,
-    Btn12,
-    Btn13,
-    Btn14,
+    Btn07Down51,
+    Btn08Down52,
+    Btn09Down53,
+    Btn10Down54,
+    Btn11Down55,
+    Btn12RightColor1,
+    Btn13RightColor2,
+    Btn14RightColor3,
     Btn15,
-    Btn16,
-    Btn17,
-    Btn18,
-    Btn19,
-    Btn20,
-    Btn21,
+    Btn16Ikarus1,
+    Btn17Ikarus2,
+    Btn18Ikarus3,
+    Btn19Ikarus4,
+    Btn20Ikarus5,
+    Btn21Ikarus6,
     Buz01,
+    Dio01Ikarus1,
+    Dio02Ikarus2,
+    Dio03Ikarus3,
+    Dio04Ikarus4,
+    Dio05Ikarus5,
+    Dio06Ikarus6,
     Joy01,
     Lcd01,
-    Led01,
+    Led01LeftBlue1,
+    Led01LeftBlue2,
+    Led01LeftBlue3,
     Led02,
-    Led03,
-    Led04,
-    Led05,
+    Led03StripDown51,
+    Led03StripDown52,
+    Led03StripDown53,
+    Led03StripDown54,
+    Led03StripDown55,
+    Led04RightColor1,
+    Led04RightColor2,
+    Led04RightColor3,
+    Led05Metal1,
+    Led05Metal2,
+    Led05Metal3,
+    Led05Metal4,
+    Led05Metal5,
     Pot1,
-    Sw01,
-    Sw02,
-    Sw03,
-    Sw04,
-    Sw05,
+    Sw01Metal1,
+    Sw02Metal2,
+    Sw03Metal3,
+    Sw04Metal4,
+    Sw05Metal5,
+    Sw06,
     Count
 };
 
@@ -55,48 +74,71 @@ enum class PinType : uint8_t {
     Unknown
 };
 
+enum class ActiveLevel : uint8_t { Unspecified, Low, High, Ws2812b };
+
 struct PinDefinition {
     uint8_t primaryPin;
     uint8_t secondaryPin;
     uint8_t tertiaryPin;
     PinType type;
+    ActiveLevel activeLevel;
+    uint8_t stripPixel; // 1-based; 0 means unspecified or not a strip lamp.
 };
 
 constexpr PinDefinition PinTable[] = {
-    PinDefinition{33, 255, 255, PinType::DigitalIn}, // BTN01: 33
-    PinDefinition{34, 255, 255, PinType::DigitalIn}, // BTN02: 34
-    PinDefinition{35, 255, 255, PinType::DigitalIn}, // BTN03: 35
-    PinDefinition{24, 255, 255, PinType::DigitalIn}, // BTN05: 24
-    PinDefinition{44, 255, 255, PinType::DigitalIn}, // BTN06: 44
-    PinDefinition{41, 255, 255, PinType::DigitalIn}, // BTN07: 41
-    PinDefinition{52, 255, 255, PinType::DigitalIn}, // BTN08: 52
-    PinDefinition{50, 255, 255, PinType::DigitalIn}, // BTN09: 50
-    PinDefinition{48, 255, 255, PinType::DigitalIn}, // BTN10: 48
-    PinDefinition{46, 255, 255, PinType::DigitalIn}, // BTN11: 46
-    PinDefinition{30, 255, 255, PinType::DigitalIn}, // BTN12: 30
-    PinDefinition{31, 255, 255, PinType::DigitalIn}, // BTN13: 31
-    PinDefinition{32, 255, 255, PinType::DigitalIn}, // BTN14: 32
-    PinDefinition{51, 255, 255, PinType::DigitalIn}, // BTN15: 51
-    PinDefinition{25, 255, 255, PinType::DigitalIn}, // BTN16: 25
-    PinDefinition{27, 255, 255, PinType::DigitalIn}, // BTN17: 27
-    PinDefinition{49, 255, 255, PinType::DigitalIn}, // BTN18: 49
-    PinDefinition{47, 255, 255, PinType::DigitalIn}, // BTN19: 47
-    PinDefinition{29, 255, 255, PinType::DigitalIn}, // BTN20: 29
-    PinDefinition{43, 255, 255, PinType::DigitalIn}, // BTN21: 43
-    PinDefinition{5, 255, 255, PinType::DigitalIn}, // BUZ01: 5
-    PinDefinition{53, 8, 9, PinType::Composite}, // JOY01: d53, x=a8, y=a9
-    PinDefinition{20, 21, 255, PinType::Composite}, // LCD01: i2c (20,21)
-    PinDefinition{2, 255, 255, PinType::DigitalOut}, // LED01: 2
-    PinDefinition{2, 255, 255, PinType::DigitalOut}, // LED02: 2
-    PinDefinition{2, 255, 255, PinType::DigitalOut}, // LED03: 2
-    PinDefinition{2, 255, 255, PinType::DigitalOut}, // LED04: 2
-    PinDefinition{2, 255, 255, PinType::DigitalOut}, // LED05: 2
-    PinDefinition{3, 255, 255, PinType::AnalogIn}, // POT1: 3
-    PinDefinition{40, 255, 255, PinType::DigitalIn}, // SW01: 40
-    PinDefinition{42, 255, 255, PinType::DigitalIn}, // SW02: 42
-    PinDefinition{38, 255, 255, PinType::DigitalIn}, // SW03: 38
-    PinDefinition{36, 255, 255, PinType::DigitalIn}, // SW04: 36
-    PinDefinition{37, 255, 255, PinType::DigitalIn}, // SW05: 37
+    PinDefinition{33, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN01-left-blue_1: 33
+    PinDefinition{34, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN02-left-blue_2: 34
+    PinDefinition{35, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN03-left-blue_3: 35
+    PinDefinition{28, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN05: 28
+    PinDefinition{47, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN06: 47
+    PinDefinition{44, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN07-down-5_1: 44
+    PinDefinition{27, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN08-down-5_2: 27
+    PinDefinition{43, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN09-down-5_3: 43
+    PinDefinition{26, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN10-down-5_4: 26
+    PinDefinition{41, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN11-down-5_5: 41
+    PinDefinition{30, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN12-right-color_1: 30
+    PinDefinition{31, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN13-right-color_2: 31
+    PinDefinition{32, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN14-right-color_3: 32
+    PinDefinition{39, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN15: 39
+    PinDefinition{52, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN16-ikarus_1: 52
+    PinDefinition{50, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN17-ikarus_2: 50
+    PinDefinition{46, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN18-ikarus_3: 46
+    PinDefinition{48, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN19-ikarus_4: 48
+    PinDefinition{23, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN20-ikarus_5: 23
+    PinDefinition{51, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BTN21-ikarus_6: 51
+    PinDefinition{5, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // BUZ01: 5
+    PinDefinition{2, 255, 255, PinType::DigitalOut, ActiveLevel::High, 0}, // DIO01-ikarus_1: 2
+    PinDefinition{16, 255, 255, PinType::DigitalOut, ActiveLevel::High, 0}, // DIO02-ikarus_2: 16
+    PinDefinition{17, 255, 255, PinType::DigitalOut, ActiveLevel::High, 0}, // DIO03-ikarus_3: 17
+    PinDefinition{3, 255, 255, PinType::DigitalOut, ActiveLevel::High, 0}, // DIO04-ikarus_4: 3
+    PinDefinition{18, 255, 255, PinType::DigitalOut, ActiveLevel::High, 0}, // DIO05-ikarus_5: 18
+    PinDefinition{19, 255, 255, PinType::DigitalOut, ActiveLevel::High, 0}, // DIO06-ikarus_6: 19
+    PinDefinition{53, 8, 9, PinType::Composite, ActiveLevel::Unspecified, 0}, // JOY01: d53, x=a8, y=a9
+    PinDefinition{20, 21, 255, PinType::Composite, ActiveLevel::Unspecified, 0}, // LCD01: i2c (20,21)
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 84}, // LED01-left-blue_1: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 85}, // LED01-left-blue_2: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 86}, // LED01-left-blue_3: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 0}, // LED02: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 71}, // LED03-strip-down5_1: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 72}, // LED03-strip-down5_2: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 73}, // LED03-strip-down5_3: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 74}, // LED03-strip-down5_4: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 75}, // LED03-strip-down5_5: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 83}, // LED04-right-color_1: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 82}, // LED04-right-color_2: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 81}, // LED04-right-color_3: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 76}, // LED05-metal_1: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 77}, // LED05-metal_2: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 78}, // LED05-metal_3: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 79}, // LED05-metal_4: 4
+    PinDefinition{4, 255, 255, PinType::DigitalOut, ActiveLevel::Ws2812b, 80}, // LED05-metal_5: 4
+    PinDefinition{15, 255, 255, PinType::AnalogIn, ActiveLevel::Unspecified, 0}, // POT1: 15
+    PinDefinition{40, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // SW01-metal_1: 40
+    PinDefinition{42, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // SW02-metal_2: 42
+    PinDefinition{38, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // SW03-metal_3: 38
+    PinDefinition{36, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // SW04-metal_4: 36
+    PinDefinition{37, 255, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // SW05-metal_5: 37
+    PinDefinition{25, 24, 255, PinType::DigitalIn, ActiveLevel::Unspecified, 0}, // SW06: 25,24 (3 állású)
 };
 
 constexpr PinDefinition definition(ControlId id) {
@@ -107,7 +149,58 @@ constexpr uint8_t pinNumber(ControlId id) {
     return definition(id).primaryPin;
 }
 
-constexpr uint8_t LedDataPin = 2;
+// The switch contact and its built-in LED are separate electrical controls.
+// These associations do not automatically turn the LEDs on or off.
+struct IlluminatedSwitchDefinition {
+    uint8_t number;
+    ControlId inputControl;
+    ControlId ledControl;
+};
+
+constexpr IlluminatedSwitchDefinition IkarusSwitches[] = {
+    IlluminatedSwitchDefinition{1, ControlId::Btn16Ikarus1, ControlId::Dio01Ikarus1},
+    IlluminatedSwitchDefinition{2, ControlId::Btn17Ikarus2, ControlId::Dio02Ikarus2},
+    IlluminatedSwitchDefinition{3, ControlId::Btn18Ikarus3, ControlId::Dio03Ikarus3},
+    IlluminatedSwitchDefinition{4, ControlId::Btn19Ikarus4, ControlId::Dio04Ikarus4},
+    IlluminatedSwitchDefinition{5, ControlId::Btn20Ikarus5, ControlId::Dio05Ikarus5},
+    IlluminatedSwitchDefinition{6, ControlId::Btn21Ikarus6, ControlId::Dio06Ikarus6},
+};
+
+constexpr uint8_t IkarusSwitchCount = 6;
+
+struct LampPairDefinition {
+    ControlId inputControl;
+    ControlId lampControl;
+};
+
+constexpr LampPairDefinition LampPairs[] = {
+    LampPairDefinition{ControlId::Btn07Down51, ControlId::Led03StripDown51},
+    LampPairDefinition{ControlId::Btn08Down52, ControlId::Led03StripDown52},
+    LampPairDefinition{ControlId::Btn09Down53, ControlId::Led03StripDown53},
+    LampPairDefinition{ControlId::Btn10Down54, ControlId::Led03StripDown54},
+    LampPairDefinition{ControlId::Btn11Down55, ControlId::Led03StripDown55},
+    LampPairDefinition{ControlId::Btn16Ikarus1, ControlId::Dio01Ikarus1},
+    LampPairDefinition{ControlId::Btn17Ikarus2, ControlId::Dio02Ikarus2},
+    LampPairDefinition{ControlId::Btn18Ikarus3, ControlId::Dio03Ikarus3},
+    LampPairDefinition{ControlId::Btn19Ikarus4, ControlId::Dio04Ikarus4},
+    LampPairDefinition{ControlId::Btn20Ikarus5, ControlId::Dio05Ikarus5},
+    LampPairDefinition{ControlId::Btn21Ikarus6, ControlId::Dio06Ikarus6},
+    LampPairDefinition{ControlId::Btn01LeftBlue1, ControlId::Led01LeftBlue1},
+    LampPairDefinition{ControlId::Btn02LeftBlue2, ControlId::Led01LeftBlue2},
+    LampPairDefinition{ControlId::Btn03LeftBlue3, ControlId::Led01LeftBlue3},
+    LampPairDefinition{ControlId::Sw01Metal1, ControlId::Led05Metal1},
+    LampPairDefinition{ControlId::Sw02Metal2, ControlId::Led05Metal2},
+    LampPairDefinition{ControlId::Sw03Metal3, ControlId::Led05Metal3},
+    LampPairDefinition{ControlId::Sw04Metal4, ControlId::Led05Metal4},
+    LampPairDefinition{ControlId::Sw05Metal5, ControlId::Led05Metal5},
+    LampPairDefinition{ControlId::Btn12RightColor1, ControlId::Led04RightColor1},
+    LampPairDefinition{ControlId::Btn13RightColor2, ControlId::Led04RightColor2},
+    LampPairDefinition{ControlId::Btn14RightColor3, ControlId::Led04RightColor3},
+};
+
+constexpr uint8_t LampPairCount = 22;
+
+constexpr uint8_t LedDataPin = 4;
 constexpr uint8_t BuzzerPin = 5;
 constexpr uint8_t MenuButtonPin = 53;
 constexpr uint8_t MenuJoystickXChannel = 8;
@@ -115,7 +208,7 @@ constexpr uint8_t MenuJoystickYChannel = 9;
 constexpr uint8_t LcdI2cSdaPin = 20;
 constexpr uint8_t LcdI2cSclPin = 21;
 constexpr uint8_t LcdI2cAddress = 0x27;
-constexpr uint8_t GameButtonPin = 51;
+constexpr uint8_t GameButtonPin = 39;
 constexpr ControlId GameButtonControlId = ControlId::Btn15;
 
 } // namespace pins

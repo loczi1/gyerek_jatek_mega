@@ -1,11 +1,14 @@
 #include "Diagnostics.h"
 #include "config/BoardConfig.h"
 #include "debug/ButtonTester.h"
+#include "debug/DigitalOutputTester.h"
 #include "debug/InputMonitor.h"
 #include <avr/interrupt.h>
 
 namespace diagnostics {
 namespace {
+
+void setButtonLampsEnabled(bool enabled);
 
 debug::DigitalState readDigital(uint8_t pin) {
     if (!debug::canReadDigital(pin)) return debug::DigitalState::Reserved;
@@ -71,8 +74,11 @@ debug::ButtonTester buttonTester(readButtonMode, setButtonPullup, readButtonPres
 void begin() {
     // Only pins actually used as button inputs get pull-ups. Leave UART, I2C,
     // LED data and all unrelated pins to their own peripherals.
-    for (uint8_t pin = board::FirstDiagnosticPin; pin <= board::LastDiagnosticPin; ++pin)
-        pinMode(pin, INPUT_PULLUP);
+    for (uint8_t pin = 0; pin < board::DigitalPinCount; ++pin) {
+        if (debug::canTestButton(pin) &&
+            (pin == board::GameButtonPin || board::isWorkbookDigitalInput(pin)))
+            pinMode(pin, INPUT_PULLUP);
+    }
     pinMode(board::BuzzerPin, OUTPUT);
     digitalWrite(board::BuzzerPin, LOW);
     pinMode(board::StatusLedPin, OUTPUT);
@@ -80,9 +86,50 @@ void begin() {
     pinMode(board::AnalogInputPin, INPUT);
 }
 
+namespace {
+
+void writeDigitalOutput(uint8_t pin, bool high) {
+    if (!debug::canTestDigitalOutput(pin)) return;
+    digitalWrite(pin, high ? HIGH : LOW);
+    pinMode(pin, OUTPUT); // Preload latch before enabling the transistor output.
+}
+
+void resetDigitalOutput(uint8_t pin) {
+    if (!debug::canTestDigitalOutput(pin)) return;
+    digitalWrite(pin, debug::digitalOutputInactiveHigh(pin) ? HIGH : LOW);
+    pinMode(pin, INPUT);
+    digitalWrite(pin, LOW); // No pull-up left behind by the manual output test.
+}
+
+debug::DigitalOutputTester digitalOutputTester(writeDigitalOutput, resetDigitalOutput);
+
+void restoreButtonLamp(uint8_t pin, bool pullup) {
+    // If somebody changed the driven level, relinquish rather than overwrite it.
+    const uint8_t port = digitalPinToPort(pin);
+    const uint8_t mask = digitalPinToBitMask(pin);
+    const bool high = (*portOutputRegister(port) & mask) != 0;
+    if (high != debug::digitalOutputInactiveHigh(pin)) return;
+    resetDigitalOutput(pin);
+    setButtonPullup(pin, pullup);
+}
+
+debug::ButtonLampGuard buttonLamps(readButtonMode, writeDigitalOutput, restoreButtonLamp);
+
+void setButtonLampsEnabled(bool enabled) {
+    // Release the manual tester before taking ownership of free lamp pins.
+    if (enabled) digitalOutputTester.setEnabled(false);
+    buttonLamps.setEnabled(enabled);
+}
+
+} // namespace
+
 void setEnabled(bool enabled) {
     monitor.setEnabled(enabled);
-    if (!enabled) buttonTester.setEnabled(false, millis());
+    if (!enabled) {
+        buttonTester.setEnabled(false, millis());
+        setButtonLampsEnabled(false);
+        digitalOutputTester.setEnabled(false);
+    }
 }
 
 void update() {
@@ -90,11 +137,34 @@ void update() {
 }
 
 void setButtonTestEnabled(bool enabled, uint32_t now) {
+    // Lamps become OUTPUT before button enumeration, so no lamp gets a pull-up.
+    if (enabled) setButtonLampsEnabled(true);
     buttonTester.setEnabled(enabled, now);
+    if (!enabled) setButtonLampsEnabled(false);
 }
 
 bool updateButtons(uint32_t now) {
     return buttonTester.update(now);
+}
+
+void setDigitalOutputTestEnabled(bool enabled) {
+    digitalOutputTester.setEnabled(enabled);
+}
+
+void selectNextDigitalOutput() {
+    digitalOutputTester.selectNext();
+}
+
+void selectPreviousDigitalOutput() {
+    digitalOutputTester.selectPrevious();
+}
+
+void setSelectedDigitalOutput(bool high) {
+    digitalOutputTester.driveSelected(high);
+}
+
+void formatDigitalOutputStatus(char* buffer, size_t capacity) {
+    digitalOutputTester.formatStatus(buffer, capacity);
 }
 
 void formatButtonName(uint8_t row, char* buffer, size_t capacity) {

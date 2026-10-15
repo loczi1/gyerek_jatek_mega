@@ -24,8 +24,9 @@ LiquidCrystal lcd(0, 1, 2, 4, 5, 6, 7);
 // Project-owned renderer: keep this binding after tcMenu regeneration.
 SafeLiquidCrystalRenderer renderer(lcd, 16, 2);
 
-// Checked-in designer tree: exactly three root entries. Hardware bindings and
-// SafeLiquidCrystalRenderer are application-owned; validate after regeneration.
+// Checked-in designer tree: five level submenus, restart and Debug at root.
+// Hardware bindings and SafeLiquidCrystalRenderer are application-owned;
+// validate after regeneration.
 // Global Menu Item declarations
 // Runtime lists reserve non-overlapping ID ranges for all their rows.
 const PROGMEM AnyMenuInfo minfoSystemChecks = { "Hibak", 300, 0xffff, 0, NO_CALLBACK };
@@ -36,6 +37,19 @@ const PROGMEM AnyMenuInfo minfoAnalogInputs = { "Analog", 200, 0xffff, 0, NO_CAL
 ListRuntimeMenuItem menuAnalogInputs(&minfoAnalogInputs, 16, fnAnalogInputsRtCall, &menuStatus, INFO_LOCATION_PGM);
 const PROGMEM AnyMenuInfo minfoDigitalInputs = { "Digitalis", 100, 0xffff, 0, NO_CALLBACK };
 ListRuntimeMenuItem menuDigitalInputs(&minfoDigitalInputs, 54, fnDigitalInputsRtCall, &menuAnalogInputs, INFO_LOCATION_PGM);
+const PROGMEM AnyMenuInfo minfoSetDigitalOutputHigh = { "HIGH", 605, 0xffff, 0, SetDigitalOutputHigh };
+ActionMenuItem menuSetDigitalOutputHigh(&minfoSetDigitalOutputHigh, nullptr, INFO_LOCATION_PGM);
+const PROGMEM AnyMenuInfo minfoSetDigitalOutputLow = { "LOW", 604, 0xffff, 0, SetDigitalOutputLow };
+ActionMenuItem menuSetDigitalOutputLow(&minfoSetDigitalOutputLow, &menuSetDigitalOutputHigh, INFO_LOCATION_PGM);
+const PROGMEM AnyMenuInfo minfoPreviousDigitalOutputPin = { "Elozo", 603, 0xffff, 0, PreviousDigitalOutputPin };
+ActionMenuItem menuPreviousDigitalOutputPin(&minfoPreviousDigitalOutputPin, &menuSetDigitalOutputLow, INFO_LOCATION_PGM);
+const PROGMEM AnyMenuInfo minfoNextDigitalOutputPin = { "Kov pin", 602, 0xffff, 0, NextDigitalOutputPin };
+ActionMenuItem menuNextDigitalOutputPin(&minfoNextDigitalOutputPin, &menuPreviousDigitalOutputPin, INFO_LOCATION_PGM);
+const PROGMEM AnyMenuInfo minfoDigitalOutputStatus = { "DO allapot", 601, 0xffff, 0, NO_CALLBACK };
+TextMenuItem menuDigitalOutputStatus(&minfoDigitalOutputStatus, "NINCS", 16, &menuNextDigitalOutputPin, INFO_LOCATION_PGM);
+const PROGMEM SubMenuInfo minfoDigitalOutputs = { "Digitalis ki", 600, 0xffff, 0, NO_CALLBACK };
+BackMenuItem menuBackDigitalOutputs(&minfoDigitalOutputs, &menuDigitalOutputStatus, INFO_LOCATION_PGM);
+SubMenuItem menuDigitalOutputs(&minfoDigitalOutputs, &menuBackDigitalOutputs, &menuDigitalInputs, INFO_LOCATION_PGM);
 const PROGMEM AnyMenuInfo minfoStartLedTest = { "Inditas", 22, 0xffff, 0, StartLedTest };
 ActionMenuItem menuStartLedTest(&minfoStartLedTest, nullptr, INFO_LOCATION_PGM);
 // Raw 0..99 with offset +1 is displayed as 1..100 LEDs.
@@ -43,7 +57,7 @@ const PROGMEM AnalogMenuInfo minfoLedCount = { "LED db", 21, 0xffff, 99, NO_CALL
 AnalogMenuItem menuLedCount(&minfoLedCount, board::DefaultLedTestCount - 1, &menuStartLedTest, INFO_LOCATION_PGM);
 const PROGMEM SubMenuInfo minfoLedStrip = { "LED szalag", 20, 0xffff, 0, NO_CALLBACK };
 BackMenuItem menuBackLedStrip(&minfoLedStrip, &menuLedCount, INFO_LOCATION_PGM);
-SubMenuItem menuLedStrip(&minfoLedStrip, &menuBackLedStrip, &menuDigitalInputs, INFO_LOCATION_PGM);
+SubMenuItem menuLedStrip(&minfoLedStrip, &menuBackLedStrip, &menuDigitalOutputs, INFO_LOCATION_PGM);
 const PROGMEM AnyMenuInfo minfoButtonDebug = { "Gombok", 400, 0xffff, 0, NO_CALLBACK };
 ListRuntimeMenuItem menuButtonDebug(&minfoButtonDebug, 65, fnButtonDebugRtCall, &menuLedStrip, INFO_LOCATION_PGM);
 const PROGMEM SubMenuInfo minfoDebug = { "Debug", 7, 0xffff, 0, NO_CALLBACK };
@@ -51,8 +65,29 @@ BackMenuItem menuBackDebug(&minfoDebug, &menuButtonDebug, INFO_LOCATION_PGM);
 SubMenuItem menuDebug(&minfoDebug, &menuBackDebug, nullptr, INFO_LOCATION_PGM);
 const PROGMEM AnyMenuInfo minfoRestart = { "Ujrainditas", 5, 0xffff, 0, Restart };
 ActionMenuItem menuRestart(&minfoRestart, &menuDebug, INFO_LOCATION_PGM);
-const PROGMEM AnyMenuInfo minfoJatek = { "Jatek", 10, 0xffff, 0, Jatek };
-ActionMenuItem menuJatek(&minfoJatek, &menuRestart, INFO_LOCATION_PGM);
+const PROGMEM SubMenuInfo minfoLevel5 = { "Szint 5", 34, 0xffff, 0, NO_CALLBACK };
+BackMenuItem menuBackLevel5(&minfoLevel5, nullptr, INFO_LOCATION_PGM);
+SubMenuItem menuLevel5(&minfoLevel5, &menuBackLevel5, &menuRestart, INFO_LOCATION_PGM);
+const PROGMEM SubMenuInfo minfoLevel4 = { "Szint 4", 33, 0xffff, 0, NO_CALLBACK };
+BackMenuItem menuBackLevel4(&minfoLevel4, nullptr, INFO_LOCATION_PGM);
+SubMenuItem menuLevel4(&minfoLevel4, &menuBackLevel4, &menuLevel5, INFO_LOCATION_PGM);
+const PROGMEM SubMenuInfo minfoLevel3 = { "Szint 3", 32, 0xffff, 0, NO_CALLBACK };
+BackMenuItem menuBackLevel3(&minfoLevel3, nullptr, INFO_LOCATION_PGM);
+SubMenuItem menuLevel3(&minfoLevel3, &menuBackLevel3, &menuLevel4, INFO_LOCATION_PGM);
+const PROGMEM AnyMenuInfo minfoFlasher = { "Sima villogo", 37, 0xffff, 0, FlasherGame };
+ActionMenuItem menuFlasher(&minfoFlasher, nullptr, INFO_LOCATION_PGM);
+const PROGMEM AnyMenuInfo minfoSimon = { "Simon mondja", 36, 0xffff, 0, SimonGame };
+ActionMenuItem menuSimon(&minfoSimon, &menuFlasher, INFO_LOCATION_PGM);
+const PROGMEM AnyMenuInfo minfoJatek = { "Cyclon", 10, 0xffff, 0, Jatek };
+ActionMenuItem menuJatek(&minfoJatek, &menuSimon, INFO_LOCATION_PGM);
+const PROGMEM SubMenuInfo minfoLevel2 = { "Szint 2", 31, 0xffff, 0, NO_CALLBACK };
+BackMenuItem menuBackLevel2(&minfoLevel2, &menuJatek, INFO_LOCATION_PGM);
+SubMenuItem menuLevel2(&minfoLevel2, &menuBackLevel2, &menuLevel3, INFO_LOCATION_PGM);
+const PROGMEM AnyMenuInfo minfoRandom = { "Random", 35, 0xffff, 0, RandomGame };
+ActionMenuItem menuRandom(&minfoRandom, nullptr, INFO_LOCATION_PGM);
+const PROGMEM SubMenuInfo minfoLevel1 = { "Szint 1", 30, 0xffff, 0, NO_CALLBACK };
+BackMenuItem menuBackLevel1(&minfoLevel1, &menuRandom, INFO_LOCATION_PGM);
+SubMenuItem menuLevel1(&minfoLevel1, &menuBackLevel1, &menuLevel2, INFO_LOCATION_PGM);
 
 void setupMenu() {
     // First we set up eeprom and authentication (if needed).
@@ -70,10 +105,11 @@ void setupMenu() {
     // Project-owned deterministic input; no accelerated library joystick task.
     menuInput::begin();
     menuButtonDebug.setReadOnly(true);
+    menuDigitalOutputStatus.setReadOnly(true);
     menuDigitalInputs.setReadOnly(true);
     menuAnalogInputs.setReadOnly(true);
     menuStatus.setReadOnly(true);
     menuSystemChecks.setReadOnly(true);
-    menuMgr.initWithoutInput(&renderer, &menuJatek);
+    menuMgr.initWithoutInput(&renderer, &menuLevel1);
 }
 

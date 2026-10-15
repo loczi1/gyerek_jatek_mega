@@ -56,6 +56,7 @@ class ProjectTests(unittest.TestCase):
             int(identifier): name
             for name, identifier in re.findall(r'minfo\w+\s*=\s*\{\s*"([^"]+)",\s*(\d+)', source)
         }
+        self.assertEqual(set(names_by_id), {entry["item"]["id"] for entry in definition["items"]})
         for entry in definition["items"]:
             item = entry["item"]
             self.assertEqual(names_by_id[item["id"]], item["name"])
@@ -74,30 +75,107 @@ class ProjectTests(unittest.TestCase):
                 self.assertIn(f"fn{variable}RtCall(", header)
                 self.assertIn(f"fn{variable}RtCall(", callbacks)
 
-    def test_exactly_three_root_options_and_no_music_selection(self):
+        # Match every sibling and submenu child link, not only names and IDs.
+        for parent_id in {entry["parentId"] for entry in definition["items"]}:
+            siblings = [entry for entry in definition["items"] if entry["parentId"] == parent_id]
+            for index, entry in enumerate(siblings):
+                variable = entry["item"]["variableName"]
+                next_item = ("&menu" + siblings[index + 1]["item"]["variableName"]
+                             if index + 1 < len(siblings) else "nullptr")
+                if entry["type"] == "subMenu":
+                    children = [child for child in definition["items"]
+                                if child["parentId"] == entry["item"]["id"]]
+                    first_child = "&menu" + children[0]["item"]["variableName"] if children else "nullptr"
+                    self.assertIn(f"BackMenuItem menuBack{variable}(&minfo{variable}, {first_child},", source)
+                    self.assertIn(f"SubMenuItem menu{variable}(&minfo{variable}, &menuBack{variable}, {next_item},", source)
+                    self.assertIn(f"extern SubMenuItem menu{variable};", header)
+                    self.assertIn(f"extern BackMenuItem menuBack{variable};", header)
+                else:
+                    self.assertRegex(source, rf"menu{variable}\(&minfo{variable}, (?:[^;\n]*, )?{re.escape(next_item)}, INFO_LOCATION_PGM\);")
+
+    def test_exactly_seven_root_options_and_level_hierarchy_without_music(self):
         definition = json.loads((ROOT / "Gyerek_jatek_arduinomega.emf").read_text(encoding="utf-8"))
         roots = [entry for entry in definition["items"] if entry["parentId"] == 0]
-        self.assertEqual([entry["item"]["name"] for entry in roots], ["Jatek", "Ujrainditas", "Debug"])
-        self.assertEqual([entry["type"] for entry in roots], ["actionMenu", "actionMenu", "subMenu"])
+        self.assertEqual([entry["item"]["name"] for entry in roots],
+                         ["Szint 1", "Szint 2", "Szint 3", "Szint 4", "Szint 5", "Ujrainditas", "Debug"])
+        self.assertEqual([entry["type"] for entry in roots], ["subMenu"] * 5 + ["actionMenu", "subMenu"])
+        self.assertEqual([entry["item"]["id"] for entry in roots], [30, 31, 32, 33, 34, 5, 7])
+        expected_children = {
+            30: [("Random", "Random", "RandomGame", 35)],
+            31: [("Cyclon", "Jatek", "Jatek", 10), ("Simon mondja", "Simon", "SimonGame", 36),
+                 ("Sima villogo", "Flasher", "FlasherGame", 37)],
+            32: [], 33: [], 34: [],
+        }
+        for parent_id, expected in expected_children.items():
+            children = [entry for entry in definition["items"] if entry["parentId"] == parent_id]
+            self.assertEqual([(entry["item"]["name"], entry["item"]["variableName"],
+                               entry["item"].get("functionName"), entry["item"]["id"])
+                              for entry in children], expected)
+            self.assertTrue(all(entry["type"] == "actionMenu" for entry in children))
         source = (ROOT / "src/Gyerek_jatek_arduinomega_menu.cpp").read_text(encoding="utf-8")
-        self.assertIn("menuJatek(&minfoJatek, &menuRestart,", source)
+        header = (ROOT / "src/Gyerek_jatek_arduinomega_menu.h").read_text(encoding="utf-8")
         self.assertIn("menuRestart(&minfoRestart, &menuDebug,", source)
         self.assertIn("menuDebug(&minfoDebug, &menuBackDebug, nullptr,", source)
-        self.assertIn("menuMgr.initWithoutInput(&renderer, &menuJatek);", source)
+        self.assertIn("menuMgr.initWithoutInput(&renderer, &menuLevel1);", source)
+        self.assertIn("inline MenuItem& rootMenuItem() { return menuLevel1; }", header)
+        callbacks = (ROOT / "src/ui/MenuCallbacks.cpp").read_text(encoding="utf-8")
+        for variable, callback, function in (("Random", "RandomGame", "playRandom"),
+                                             ("Jatek", "Jatek", "playGame"),
+                                             ("Simon", "SimonGame", "playSimon"),
+                                             ("Flasher", "FlasherGame", "playFlasher")):
+            self.assertIn(f"extern ActionMenuItem menu{variable};", header)
+            self.assertRegex(source, rf"minfo{variable}\s*=\s*\{{[^\n]*, {callback} \}};")
+            self.assertRegex(callbacks, rf"void CALLBACK_FUNCTION {callback}\(int\)\s*\{{\s*application::{function}\(\);\s*\}}")
         for unwanted in ("JatekValaszto", "Input naplo", "Bemenetek", "Zene", "enumStrJatek"):
             self.assertNotIn(unwanted, source)
         application = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
         controller = (ROOT / "src/app/ModeController.h").read_text(encoding="utf-8")
         self.assertNotIn("music::", application)
         self.assertNotIn("music/MusicPlayer.h", controller)
-        self.assertIn("isShowingRoot()", application)
+        # Debug owns only its own subtree, not every non-root level menu.
+        debug_ids = {7, 20, 600}
+        debug_children = [entry for entry in definition["items"] if entry["parentId"] in debug_ids]
+        self.assertTrue(all(entry["item"]["variableName"] not in
+                    ("Random", "Jatek", "Simon", "Flasher", "Level1", "Level2", "Level3", "Level4", "Level5")
+                    for entry in debug_children))
+
+    def test_panel_games_hardware_wiring_and_cancellation(self):
+        app = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
+        for binding in ("controller.update(now, gameButtonPressed())",
+                        "panel.update(now, panelPressedMask())",
+                        "soundEffects.update(millis())",
+                        "gameScope && menuMgr.getCurrentMenu() != gameScope",
+                        "gameScope = &menuBackLevel2;",
+                        "game::PanelMode::Random, &menuBackLevel1",
+                        "game::PanelMode::Simon, &menuBackLevel2"):
+            self.assertIn(binding, app)
+        scope = app.split("void synchronizeDebugView", 1)[1].split("void update()", 1)[0]
+        self.assertIn("current == &menuBackDebug", scope)
+        self.assertNotIn("!menuMgr.getNavigationStore().isShowingRoot()", scope)
+        self.assertNotIn("menuBackLevel", scope)
+        stop = app.split("void stopGames", 1)[1].split("void finishLedTest", 1)[0]
+        self.assertIn("PanelMode::Disabled", stop)
+        self.assertIn("soundEffects.stop();", stop)
+        self.assertIn("stopTone();", stop)
+        self.assertIn("selectedGame = SelectedGame::None;", stop)
+        inputs = app.split("void configurePanelInputs", 1)[1].split("void stopGames", 1)[0]
+        self.assertIn("board::isWorkbookDigitalInput(pin)", inputs)
+        self.assertIn("debug::canTestButton(pin)", inputs)
+        self.assertIn("portModeRegister(port)", inputs)
+        self.assertIn("portInputRegister(port)", inputs)
+        hardware = (ROOT / "src/hardware/LedDisplay.cpp").read_text(encoding="utf-8")
+        frame = hardware.split("void drawPanel", 1)[1].split("void drawTest", 1)[0]
+        self.assertIn("fill_solid(pixels, board::LedStripCapacity, CRGB::Black);", frame)
+        self.assertIn("pixel > 0 && pixel <= board::LedStripCapacity", frame)
+        self.assertIn("pixels[pixel - 1]", frame)
+        self.assertIn("board::panelStripPixel(currentGame.litChannel())", frame)
 
     def test_debug_lists_cover_inputs_with_non_overlapping_ids(self):
         definition = json.loads((ROOT / "Gyerek_jatek_arduinomega.emf").read_text(encoding="utf-8"))
         children = [entry["item"] for entry in definition["items"] if entry["parentId"] == 7]
-        self.assertEqual([item["name"] for item in children], ["Gombok", "LED szalag", "Digitalis", "Analog", "Allapot", "Hibak"])
-        self.assertTrue(all(item["readOnly"] for item in children if item["name"] != "LED szalag"))
-        self.assertEqual([item.get("initialRows") for item in children], [65, None, 54, 16, None, 3])
+        self.assertEqual([item["name"] for item in children], ["Gombok", "LED szalag", "Digitalis ki", "Digitalis", "Analog", "Allapot", "Hibak"])
+        self.assertTrue(all(item["readOnly"] for item in children if item["name"] not in ("LED szalag", "Digitalis ki")))
+        self.assertEqual([item.get("initialRows") for item in children], [65, None, None, 54, 16, None, 3])
         occupied = set()
         for entry in definition["items"]:
             item = entry["item"]
@@ -105,6 +183,9 @@ class ProjectTests(unittest.TestCase):
             identifiers = set(range(item["id"], item["id"] + count))
             self.assertTrue(occupied.isdisjoint(identifiers))
             occupied.update(identifiers)
+        output_children = [entry["item"] for entry in definition["items"] if entry["parentId"] == 600]
+        self.assertEqual([item["name"] for item in output_children], ["DO allapot", "Kov pin", "Elozo", "LOW", "HIGH"])
+        self.assertTrue(output_children[0]["readOnly"])
 
     def test_debug_scanning_preserves_pin_modes_and_pwm(self):
         source = (ROOT / "src/hardware/Diagnostics.cpp").read_text(encoding="utf-8")
@@ -140,6 +221,7 @@ class ProjectTests(unittest.TestCase):
     def test_button_test_pullups_are_scoped_and_output_protected(self):
         application = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
         self.assertIn("diagnostics::setButtonTestEnabled(debugViewing && menuMgr.getCurrentMenu() == &menuButtonDebug, now);", application)
+        self.assertIn("menuMgr.getCurrentMenu() == &menuBackDigitalOutputs", application)
         hardware = (ROOT / "src/hardware/Diagnostics.cpp").read_text(encoding="utf-8")
         self.assertIn("if (!debug::canTestButton(pin)) return;", hardware)
         self.assertIn("if ((*portModeRegister(port) & mask) == 0)", hardware)
@@ -151,6 +233,31 @@ class ProjectTests(unittest.TestCase):
         self.assertNotIn("setNumberOfRows", application)
         self.assertNotIn("setNumberOfRows", tester)
 
+    def test_workbook_digital_outputs_drive_only_safe_debug_pins(self):
+        generated = (ROOT / "src/generated/pins.h").read_text(encoding="utf-8")
+        self.assertIn("IkarusSwitches[]", generated)
+        self.assertIn("Dio01Ikarus1,", generated)
+        tester = (ROOT / "src/debug/DigitalOutputTester.cpp").read_text(encoding="utf-8")
+        self.assertIn("digitalRole(pin) == DigitalRole::Input", tester)
+        self.assertIn("definition.type == generated::pins::PinType::DigitalOut", tester)
+        self.assertIn("definition.primaryPin == pin", tester)
+        hardware = (ROOT / "src/hardware/Diagnostics.cpp").read_text(encoding="utf-8")
+        self.assertIn("pinMode(pin, OUTPUT);", hardware)
+        self.assertIn("pinMode(pin, INPUT);", hardware)
+
+    def test_workbook_button_contacts_and_pot_drive_initialization(self):
+        hardware = (ROOT / "src/hardware/Diagnostics.cpp").read_text(encoding="utf-8")
+        self.assertIn("debug::canTestButton(pin)", hardware)
+        self.assertIn("pin == board::GameButtonPin || board::isWorkbookDigitalInput(pin)", hardware)
+        self.assertIn("pinMode(pin, INPUT_PULLUP);", hardware)
+        self.assertNotIn("FirstDiagnosticPin", hardware)
+        pins = (ROOT / "src/config/PinConfig.h").read_text(encoding="utf-8")
+        self.assertIn("definition.secondaryPin == pin", pins)
+        self.assertIn("definition.tertiaryPin == pin", pins)
+        self.assertIn("generated::pins::ControlId::Pot1", pins)
+        board = (ROOT / "src/config/BoardConfig.h").read_text(encoding="utf-8")
+        self.assertIn("AnalogInputPin = A0 + PotentiometerChannel;", board)
+
     def test_analog_button_gpio_and_joystick_exclusion(self):
         tester = (ROOT / "src/debug/ButtonTester.cpp").read_text(encoding="utf-8")
         self.assertIn("pin != board::FirstAnalogGpioPin + board::MenuJoystickChannel", tester)
@@ -161,7 +268,7 @@ class ProjectTests(unittest.TestCase):
         header = (ROOT / "src/debug/ButtonTester.h").read_text(encoding="utf-8")
         self.assertIn("changedAt_[board::GpioPinCount]", header)
 
-    def test_led_strip_menu_count_and_single_d2_controller(self):
+    def test_led_strip_menu_count_and_single_workbook_pin_controller(self):
         definition = json.loads((ROOT / "Gyerek_jatek_arduinomega.emf").read_text(encoding="utf-8"))
         children = [entry for entry in definition["items"] if entry["parentId"] == 20]
         self.assertEqual([entry["item"]["name"] for entry in children], ["LED db", "Inditas"])
@@ -172,6 +279,7 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual(count["item"]["offset"], 1)
         hardware = (ROOT / "src/hardware/LedDisplay.cpp").read_text(encoding="utf-8")
         self.assertEqual(hardware.count("FastLED.addLeds<"), 1)
+        self.assertIn("board::LedDataPin", hardware)
         self.assertIn("CRGB pixels[board::LedStripCapacity];", hardware)
         self.assertIn("fill_solid(pixels, board::LedStripCapacity, CRGB::Black);", hardware)
         self.assertIn("pixels[test.position()] = CRGB::White;", hardware)
@@ -199,6 +307,14 @@ class ProjectTests(unittest.TestCase):
         self.assertRegex(application, r"setupMenu\(\);[\s\S]*?"
                          r"renderer\.setResetIntervalTimeSeconds\(board::MenuIdleTimeoutSeconds\);\s*"
                          r"renderer\.menuAltered\(\);")
+        # Selection disables reset, not just periodically renews its countdown.
+        for start, end in (("void playGame()", "void selectPanelGame"),
+                           ("void selectPanelGame", "void playRandom()")):
+            selection = application.split(start, 1)[1].split(end, 1)[0]
+            self.assertIn("renderer.turnOffResetLogic();", selection)
+            self.assertRegex(selection, r"renderer\.turnOffResetLogic\(\);\s*renderer\.menuAltered\(\);")
+        stop = application.split("void stopGames", 1)[1].split("void finishLedTest", 1)[0]
+        self.assertRegex(stop, r"renderer\.setResetIntervalTimeSeconds\(board::MenuIdleTimeoutSeconds\);\s*renderer\.menuAltered\(\);")
         # This override belongs to application code, not a designer-owned file.
         menu = (ROOT / "src/Gyerek_jatek_arduinomega_menu.cpp").read_text(encoding="utf-8")
         self.assertNotIn("setResetIntervalTimeSeconds", menu)

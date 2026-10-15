@@ -9,6 +9,9 @@ namespace application {
 void begin();
 void run();
 void playGame();
+void playRandom();
+void playSimon();
+void playFlasher();
 void restart();
 void refreshDiagnostics();
 void startLedTest();

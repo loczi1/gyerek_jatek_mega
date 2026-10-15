@@ -16,11 +16,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = [
     "src/audio/SoundEffects.cpp",
     "src/game/CycloneGame.cpp",
+    "src/game/PanelGames.cpp",
     "src/music/Melody.cpp",
     "src/music/MusicPlayer.cpp",
     "src/app/ModeController.cpp",
     "src/debug/InputMonitor.cpp",
     "src/debug/ButtonTester.cpp",
+    "src/debug/DigitalOutputTester.cpp",
     "src/debug/LedStripTester.cpp",
     "src/debug/SystemChecks.cpp",
     "src/ui/JoystickRepeat.cpp",
@@ -29,6 +31,7 @@ SOURCES = [
     "test/native/test_debug.cpp",
     "test/native/test_input.cpp",
     "test/native/test_led_strip.cpp",
+    "test/native/test_panel_games.cpp",
     "test/native/test_main.cpp",
 ]
 

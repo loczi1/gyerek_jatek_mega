@@ -21,13 +21,14 @@ unsigned int digitalTotal = 0;
 unsigned int analogTotal = 0;
 bool invertValues = false;
 bool invalidAnalogValues = false;
+constexpr uint8_t TestOutputPin = 7;
 
 debug::DigitalState readDigital(uint8_t pin) {
     CHECK(pin < board::DigitalPinCount);
     CHECK(debug::canReadDigital(pin));
     ++digitalReads[pin];
     ++digitalTotal;
-    if (pin == 4) return debug::DigitalState::Output;
+    if (pin == TestOutputPin) return debug::DigitalState::Output;
     return (pin == board::GameButtonPin) != invertValues
         ? debug::DigitalState::Low : debug::DigitalState::High;
 }
@@ -143,8 +144,10 @@ void testMissingReadersShowPendingNotFakeValues() {
 void testInputLabelsAndReservedRoles() {
     debug::InputMonitor monitor(readDigital, readAnalog);
     char text[16];
+    char expected[16];
     debug::InputMonitor::formatDigitalName(board::GameButtonPin, text, sizeof(text));
-    CHECK(strcmp(text, "D51 Jatek") == 0);
+    snprintf(expected, sizeof(expected), "D%u Jatek", static_cast<unsigned int>(board::GameButtonPin));
+    CHECK(strcmp(text, expected) == 0);
     debug::InputMonitor::formatDigitalName(53, text, sizeof(text));
     CHECK(strcmp(text, "D53 Menu") == 0);
     debug::InputMonitor::formatAnalogName(9, text, sizeof(text));
@@ -153,7 +156,7 @@ void testInputLabelsAndReservedRoles() {
     CHECK(strcmp(text, "A15") == 0);
     monitor.formatDigitalValue(0, text, sizeof(text));
     CHECK(strcmp(text, "UART") == 0);
-    monitor.formatDigitalValue(2, text, sizeof(text));
+    monitor.formatDigitalValue(board::LedDataPin, text, sizeof(text));
     CHECK(strcmp(text, "LED") == 0);
     monitor.formatDigitalValue(5, text, sizeof(text));
     CHECK(strcmp(text, "HANG") == 0);
@@ -168,7 +171,7 @@ void testOutputAndInvalidAnalogAreNotInputMeasurements() {
     debug::InputMonitor monitor(readDigital, readAnalog);
     sampleAll(monitor);
     char text[16];
-    monitor.formatDigitalValue(4, text, sizeof(text));
+    monitor.formatDigitalValue(TestOutputPin, text, sizeof(text));
     CHECK(strcmp(text, "OUT") == 0);
     monitor.formatAnalogValue(3, text, sizeof(text));
     CHECK(strcmp(text, "OUT") == 0);

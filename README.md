@@ -1,6 +1,6 @@
 # Gyerek_jatek
 
-Arduino Mega 2560 LED reaction game with a 16x2 tcMenu LCD interface, win/loss buzzer sounds and live input diagnostics. Open [Gyerek_jatek.code-workspace](Gyerek_jatek.code-workspace); it contains only this project, not the unrelated Csiraztato project.
+Arduino Mega 2560 LED games (Cyclon, Random, Simon mondja and Sima villogó / Flasher) with a 16x2 tcMenu LCD interface, buzzer feedback and live input diagnostics. Open [Gyerek_jatek.code-workspace](Gyerek_jatek.code-workspace); it contains only this project, not the unrelated Csiraztato project.
 
 Magyar nyelvű felhasználói útmutató: [HASZNALATI_UTMUTATO.md](HASZNALATI_UTMUTATO.md).
 
@@ -18,11 +18,13 @@ Workbook-driven configuration design and generated artifacts: [docs/EXCEL_CONFIG
 | --- | --- |
 | [src/main.cpp](src/main.cpp) | Arduino setup/loop entry point |
 | [src/app/Application.cpp](src/app/Application.cpp) | Hardware initialization and two permanent 5 ms tasks: game/input and audio |
-| [src/app/ModeController.cpp](src/app/ModeController.cpp) | Cyclon/Debug selection and one-shot result sounds; no task allocation |
+| [src/app/ModeController.cpp](src/app/ModeController.cpp) | Cyclon/Debug engine control and one-shot result sounds; application owns game selection and menu scope |
 | [src/audio/SoundEffects.cpp](src/audio/SoundEffects.cpp) | Flash-backed, non-blocking win/loss buzzer patterns |
 | [src/game/CycloneGame.cpp](src/game/CycloneGame.cpp) | Portable game state machine, movement, hit windows, intro and feedback timers |
+| [src/game/PanelGames.cpp](src/game/PanelGames.cpp) | Portable Random/Simon/Flasher state machines, sequence or single target, debounce and feedback |
+| [src/config/PanelConfig.h](src/config/PanelConfig.h) | Eleven panel channels resolved through workbook lamp pairs and strip positions |
 | [src/game/DebouncedButton.h](src/game/DebouncedButton.h) | One event per debounced press, with rollover-safe timing |
-| [src/hardware/LedDisplay.cpp](src/hardware/LedDisplay.cpp) | One 100-pixel D2 buffer shared by the 75-pixel game and strip test |
+| [src/hardware/LedDisplay.cpp](src/hardware/LedDisplay.cpp) | One 100-pixel workbook-selected strip buffer shared by Cyclon, panel games and strip test |
 | [src/hardware/Diagnostics.cpp](src/hardware/Diagnostics.cpp) | Mega register/ADC adapter and scoped button pull-ups; preserves outputs and PWM |
 | [src/debug/InputMonitor.cpp](src/debug/InputMonitor.cpp) | Cached, bounded digital/analog scanning and input labels |
 | [src/debug/ButtonTester.cpp](src/debug/ButtonTester.cpp) | Debounced pressed-pin detection, last-press capture and reversible input pull-ups |
@@ -36,21 +38,24 @@ Workbook-driven configuration design and generated artifacts: [docs/EXCEL_CONFIG
 
 ## Excel configuration pipeline
 
-- `Gyerek_jatek_3.0.xlsx` is the workbook source for generated configuration artifacts.
-- `tools/generate_config.py` parses the workbook with Python's standard library only, so the PlatformIO build does not need JSON parsing or extra Python packages.
+- [Gyerek_jatek_3.0.xlsx](Gyerek_jatek_3.0.xlsx) is the workbook source for generated configuration artifacts.
+- [tools/generate_config.py](tools/generate_config.py) parses the workbook with Python's standard library only, so the PlatformIO build does not need JSON parsing or extra Python packages.
 - The build regenerates [src/generated/pins.h](src/generated/pins.h) and [src/generated/game_config.h](src/generated/game_config.h) before the normal project checks run.
-- The generated headers are constexpr-only data tables intended for flash-friendly firmware consumption. They currently cover the exported pin catalog and per-game control bindings from the workbook.
+- The generated headers are constexpr-only data tables intended for flash-friendly firmware consumption. They cover the exported pin catalog, per-game bindings, lamp pairs and 1-based strip positions (`PinDefinition::stripPixel`, 0 unspecified). Numeric `PinMap_export` column B (`Info`) values on WS2812B rows must be unique and in 1–100; descriptive/range text is skipped. Multi-contact GPIO cells retain each contact; the annotation in `25,24 (3 állású)` is not a third pin. The panel feature leaves the workbook unchanged.
+- Startup pull-ups follow safe workbook `DigitalIn` contacts, including the remapped game button and both contacts of a three-position switch. Unrelated GPIO and board-owned peripheral pins are not initialized as buttons.
 - The long-term sheet layout for multi-game and per-level gameplay settings is documented in [docs/EXCEL_CONFIG_ARCHITECTURE.md](docs/EXCEL_CONFIG_ARCHITECTURE.md). The current firmware still keeps Cyclon timing constants in source until the workbook gains the dedicated level-definition sheet described there.
 
 ## Wiring
 
-The existing hardware assignments are unchanged. Pin ownership is centralized in [src/config/PinConfig.h](src/config/PinConfig.h); hardware timing and power limits are in [src/config/BoardConfig.h](src/config/BoardConfig.h).
+Assignments follow the workbook export through [src/generated/pins.h](src/generated/pins.h) and [src/config/PinConfig.h](src/config/PinConfig.h). The table below reflects the **2026-10-14** workbook; regenerate and verify the physical wiring after further edits. Hardware timing and power limits are in [src/config/BoardConfig.h](src/config/BoardConfig.h).
 
 | Connection | Mega pin / setting |
 | --- | --- |
-| WS2812B LED data | D2; GRB. Game uses 70+5 LEDs; Debug tests a selected length of 1-100 LEDs |
+| WS2812B LED data | D4; GRB. Cyclon uses 70+5 LEDs; panel lamps require at least 86 physical LEDs; Debug tests a selected length of 1-100 LEDs |
 | Passive buzzer | D5 |
-| Game push button | D51 to GND, internal pull-up, active LOW; derived from workbook `CYCLON` `Start` / `Action` -> `BTN15` |
+| Game push button | D39 to GND, internal pull-up, active LOW; derived from workbook `CYCLON` `Start` / `Action` -> `BTN15` |
+| Potentiometer | `POT1` on A15; the workbook value 15 is an ADC channel, not D15 |
+| Three-position switch | `SW06` contacts on D25 and D24; both exported as digital inputs |
 | Button Debug inputs | Safe D0-D53 and A0-A15 GPIO, excluding A9 joystick; button to GND; temporary pull-ups in Gombok. Existing pull-ups are preserved |
 | Menu select button | D53 to GND, configured by tcMenu |
 | Menu joystick Y | A9; ADC centre 512, engage distance 140, release distance 80 |
@@ -59,24 +64,60 @@ The existing hardware assignments are unchanged. Pin ownership is centralized in
 | LCD | PCF8574 at I2C address 0x27; Mega SDA D20 and SCL D21 |
 | Status output | On-board LED D13; reserved, not driven by Debug |
 
-LCD constructor pin numbers 0-7 refer to **PCF8574 bits**, not Mega pins, after the I/O abstraction is selected. There is no LCD/FastLED D2 conflict in this configuration.
+LCD constructor pin numbers 0-7 refer to **PCF8574 bits**, not Mega pins, after the I/O abstraction is selected. There is no LCD/FastLED pin conflict in this configuration.
 
 Use an appropriate external 5 V supply for the strip, a common ground, and suitable data-line protection. FastLED's configured 1000 mA software estimate helps cap brightness; it does not verify or protect the physical power supply. Actual supply, wiring, joystick calibration, LCD backpack mapping and buzzer operation require on-device checks.
 
+### Illuminated Ikarus switches
+
+Each Ikarus unit has a switch contact and a built-in light. They are **two separate electrical controls**, paired by the matching `_ikarus_N` workbook suffix:
+
+| Unit | Switch control / input | Built-in LED control / output |
+| --- | --- | --- |
+| 1 | `BTN16_ikarus_1` / D52 | `DIO01_ikarus_1` / D2 |
+| 2 | `BTN17_ikarus_2` / D50 | `DIO02_ikarus_2` / D16 |
+| 3 | `BTN18_ikarus_3` / D46 | `DIO03_ikarus_3` / D17 |
+| 4 | `BTN19_ikarus_4` / D48 | `DIO04_ikarus_4` / D3 |
+| 5 | `BTN20_ikarus_5` / D23 | `DIO05_ikarus_5` / D18 |
+| 6 | `BTN21_ikarus_6` / D51 | `DIO06_ikarus_6` / D19 |
+
+The generator emits `generated::pins::IkarusSwitches` and **22** `generated::pins::LampPairs` associations. Hyphenated button/switch and lamp IDs pair by their suffix, not prefix number: `BTN01-left-blue_1` ↔ `LED01-left-blue_1`, `SW01-metal_1` ↔ `LED05-metal_1`. The workbook's `down-5_N` ↔ `strip-down5_N` spelling is normalized explicitly. Legacy underscore Ikarus IDs remain supported. **No automatic matching Ikarus lamp switching is implemented**; Random instead chooses a panel lamp. Cyclon gameplay is unchanged.
+
+The workbook's `ActiveLevel` is exported in each pin definition: `HIGH` / `LOW` describe a transistor lamp's active GPIO level; `WS2812B` identifies strip data, never a directly switchable lamp output. Blank means unspecified and is excluded from manual GPIO output testing. All six current transistor lamps are **HIGH = ON, LOW = OFF**. Pair identity does not change their electrical independence or the 75-pixel Cyclon layout.
+
+The generator rejects missing/duplicate lamp pairs, incorrect input/output types, invalid active levels, and transistor outputs overlapping UART, board-owned pins, input contacts or another lamp output. D4 is reserved for the strip; D2 is available for Ikarus LED #1. ActiveLevel describes polarity, not lamp voltage/current ratings or driver suitability: verify these and provide appropriate current limiting/driver hardware before connecting a lamp.
+
 ## Behavior
 
-- The main menu has exactly **Jatek**, **Ujrainditas** and **Debug**. Jatek is an action for the only available game, **Cyclon**, not a game/music selector. Selecting Jatek while a game is already active does not reset the round.
-- Default mode: **Cyclon**, ready at the rainbow screen. Press D51 once to start the non-blocking intro wipe (500 ms pause, 70 x 40 ms game pixels, 5 x 100 ms score pixels).
+- Root options are **Szint1**, **Szint2**, **Szint3**, **Szint4**, **Szint5**, **Ujrainditas**, **Debug**. Szint1 offers **Random**; Szint2 offers **Cyclon**, **Simon mondja**, then **Sima villogo** (ASCII LCD label; Hungarian: Sima villogó, internal mode `Flasher`). Szint3–5 are deliberately reserved with Back only, as requested. Root levels are not Cyclon's four internal difficulties.
+- Boot selects **no game** and leaves the strip dark. Manually leaving a game's owning level submenu (Back/root or another menu), entering Debug or choosing Ujrainditas cancels the game, tone and all **100** buffered LEDs and restores the normal **120-second** menu/Debug timeout. Returning from Debug does not resume or select a game.
+- Selecting **any game (Cyclon, Random, Simon or Flasher)** disables tcMenu's automatic return entirely via `renderer.turnOffResetLogic()`. This remains disabled during ready, gameplay and result states, including after completion/failure: the game stays selected with **no menu timeout** until manually cancelled. Simon's and Flasher's **10-second input inactivity timeouts** are gameplay logic, not menu cancellation; the LED Debug screen retains its own **120-second** timer.
+- **Random:** every safe configured digital input/switch contact, including Cyclon D39 and Ikarus contacts but excluding menu/peripheral pins, accepts fresh debounced presses. Each press chooses one of the **11 panel lamps**, a random hue and a **220–1760 Hz tone for 250 ms**. It does not light the pressed switch's matching Ikarus lamp. Re-selecting Random resets it.
+- **Simon mondja:** selection waits for a fresh press of any of the 11 panel buttons; that start press is consumed, not checked as an answer. A random sequence grows from **1 to 32** steps. Playback has a **500 ms initial pause**, **500 ms lights** and **200 ms gaps**. Held playback inputs are ignored and must be released before answering. Repeat the sequence with the same buttons. Every correct press gives **540 ms green feedback** plus Cyclon's rising Win chime; wrong input, a chord or **10 seconds without an input** gives **740 ms red feedback** plus Cyclon's Loss sound. Completion at 32 or failure returns to Ready for a fresh start press. Re-selecting Simon resets the sequence.
+- **Sima villogó (Szint2, LCD: Sima villogo, mode `Flasher`):** uses the same 11 panel inputs and corrected lamp mapping as Simon. A fresh press of any panel button starts and is consumed, not checked as an answer; release after playback is required as in Simon. After a **500 ms initial pause**, one random target lights for **500 ms**, goes dark for **200 ms**, then reappears and **remains visible while awaiting its matching button**. This is not a memory game. A correct press gives **540 ms green feedback** and the same Win chime, then a new single target is chosen. Rounds are unlimited: no accumulated sequence and no 32-step completion. Wrong input, a chord or **10 seconds of input inactivity** gives **740 ms red feedback** and the same Loss sound, then Ready waits for a fresh start press. Re-selection resets Flasher. Simon's growing sequence and rules are unchanged.
+- Workbook `Info` and `LampPairs` are exported unchanged. The panel adapter corrects the lower row's physically reversed strip direction: **BTN07–11 → 75, 74, 73, 72, 71**. Input order and both upper groups remain unchanged:
+
+	| Buttons | 1-based strip pixels |
+	| --- | --- |
+	| BTN01, BTN02, BTN03 | 84, 85, 86 |
+	 | BTN07, BTN08, BTN09, BTN10, BTN11 | 75, 74, 73, 72, 71 |
+	| BTN12, BTN13, BTN14 | 83, 82, 81 |
+
+	All lamps need a physical strip of **at least 86 pixels**, even though Cyclon uses only 75.
+
+### Cyclon (Szint2)
+
+- Selecting Cyclon waits for a fresh **D39** press at its ready screen. The non-blocking intro wipe is unchanged (500 ms pause, 70 x 40 ms game pixels, 5 x 100 ms score pixels).
 - A held button is never reused to stop a level, restart after a loss, or start a game on boot. Release it before pressing again.
 - Level speeds are 50, 40, 35 and 20 ms per pixel; the task polls every 5 ms rather than imposing the old 50 ms limit. Actual timing can have small scheduling and LED-transmission jitter.
 - Level 1 accepts the five-pixel target window, level 2 accepts three pixels, and levels 3/4 accept only the centre. The checked position is the displayed LED, not the next index.
 - Wins/losses flash green/red three times, 500 ms on and 500 ms off, without delaying menu or application dispatch. Winning advances to the next level; finishing level 4 or losing returns to idle.
 - Each win plays a short rising chime (523, 659, 784 Hz; about 0.54 seconds); each loss plays a descending sound (392, 294, 196 Hz; about 0.74 seconds). Each result starts its sound **once**, alongside the LED flashes, not once per flash or while a button is held.
 - Four score LEDs indicate the current difficulty level; the fifth lights during final-victory feedback. All five are cleared on the next start.
-- **Ujrainditas** resets Cyclon to its ready screen and cancels unfinished result sounds. Press D51 again to start a new round.
-- **Debug** stops the current game and sound while any of its nested views is open, so testing D51 cannot start/stop a round. Returning to the main menu restores Cyclon at its ready screen, not mid-round. A held D51 must be released before the next start.
-- Debug and nested lists automatically return to the main menu after **2 minutes without joystick/menu-button interaction**. Change MenuIdleTimeoutSeconds in [src/config/BoardConfig.h](src/config/BoardConfig.h); [src/app/Application.cpp](src/app/Application.cpp) applies it after menu setup so tcMenu's default 30-second interval is overridden. Live input refreshes do not extend this timeout. This is separate from the 25 ms I2C bus timeout.
-- JatekValaszto, Input naplo, the old test placeholders and Greensleeves selection are removed from the menu. The standalone [src/music/MusicPlayer.cpp](src/music/MusicPlayer.cpp) and [src/music/Melody.cpp](src/music/Melody.cpp) modules remain for future reuse/tests but are not referenced by the active firmware application.
+- **Ujrainditas** clears the selected game, sound and all strip pixels; select a game again to play.
+- **Debug** stops the current game and sound while any of its nested views is open, so testing D39 cannot start/stop a round. Returning to root leaves no game selected and the strip dark; there is no automatic resume.
+- **When no game is selected**, level submenus, Debug and nested lists automatically return to the main menu after **120 seconds without joystick/menu-button interaction**. Change `MenuIdleTimeoutSeconds` in [src/config/BoardConfig.h](src/config/BoardConfig.h); [src/app/Application.cpp](src/app/Application.cpp) applies it after menu setup and restores it on game cancellation, overriding tcMenu's default 30-second interval. Tested game-button presses and live input refreshes do not extend this normal menu/Debug timeout. **Selected games have no automatic return**, even while ready or after results. This is separate from Simon's and Flasher's 10-second input inactivity timeouts, the LED test's own 120-second timer and the 25 ms I2C bus timeout.
+- JatekValaszto, Input naplo, the old test placeholders and Greensleeves selection are removed; the requested Back-only Szint3–5 menus are intentional. The standalone [src/music/MusicPlayer.cpp](src/music/MusicPlayer.cpp) and [src/music/Melody.cpp](src/music/Melody.cpp) modules remain for future reuse/tests but are not referenced by the active firmware application.
 - Diagnostics are intentionally volatile; no EEPROM addresses are assigned or written.
 
 All application timers use unsigned elapsed-time subtraction for millis rollover. Button sampling, music notes, diagnostic formatting and LED rendering do not allocate Arduino String objects. The frameworks may still allocate their own menu/task storage.
@@ -91,22 +132,27 @@ Adjust the centre, thresholds, debounce, hold delay, repeat interval and display
 
 ## Debug menu
 
-- **Gombok:** identifies buttons wired between a safe GPIO input and GND. It covers **61 candidates: 46 digital pins plus 15 analog pins used as digital inputs**. UART D0/D1, LED D2, buzzer D5, status output D13, I2C D20/D21, menu/select D53 and analog joystick A9 are excluded. Any additional output pin is skipped. Missing internal pull-ups are temporarily enabled; a pulled-down pin is detected after 30 ms debounce. Analog button results use **A0-A15** labels, not the underlying Mega GPIO numbers.
+- **Gombok:** identifies buttons wired between a safe GPIO input and GND. It covers **61 candidates: 46 digital pins plus 15 analog pins used as digital inputs**. UART D0/D1, strip data D4, buzzer D5, status output D13, I2C D20/D21, menu/select D53 and analog joystick A9 are excluded. Any additional configured output pin is skipped. Missing internal pull-ups are temporarily enabled; a pulled-down pin is detected after 30 ms debounce. Analog button results use **A0-A15** labels, not the underlying Mega GPIO numbers.
+	- On entry, free workbook GPIO lamps are held at their **inactive level**: currently **D2, D3, D16, D17, D18, D19 LOW**. These six pins show OUT, leaving **55 tested inputs** within the same fixed 65-row list. Strip D4 and outputs already owned elsewhere are untouched. Back, view change and timeout release only test-owned lamp pins and restore their original floating/pull-up input settings. Future LOW-active lamps use HIGH (OFF), not LOW. Pressing a paired button does not light its lamp.
 	- **Utolso:** most recently detected press, retained after release so short presses remain visible until the next press or test entry.
 	- **Lenyomva:** currently pressed pins. **Darab:** current pressed count. **Tesztelt:** number of safe inputs participating.
 	- Summaries show up to three IDs plus a **+N** overflow count; subsequent fixed rows show every candidate individually as HIGH/LOW/OUT. The list never changes size while buttons are pressed, so results do not move the cursor.
 	- Leaving Gombok (Back, another view, or the two-minute auto-return) restores only pull-ups added by this test, including analog GPIO pull-ups. Existing digital/analog pull-ups remain, and a pin changed to an output by another owner is never overwritten. A9 is never modified, so navigation remains available.
-- **LED szalag:** test the addressable strip on **D2**. Set **LED db** to the physical strip length (**1-100**, default 100), confirm it, then choose **Inditas**. The first LED lights white; each short **joystick/select-button click** advances the single white pixel, wrapping from the last selected LED back to the first. The LCD shows **LED 1/100**, **LED 2/100**, etc., using one-based positions.
+- **Digitalis ki:** workbook-defined, safe digital outputs that are not already reserved by the firmware. The current workbook exposes the six Ikarus LED outputs, in GPIO order: **D2, D3, D16, D17, D18, D19**. It never drives UART, strip D4, buzzer D5, status D13, I2C D20/D21, game D39 or menu D53.
+	- **DO allapot** shows the selected pin and its last driven state: initially **D2 ---**, then **D2 LOW** or **D2 HIGH** when driven.
+	- **Kov pin / Elozo** cycle through safe workbook `DigitalOut` GPIO with `ActiveLevel` HIGH or LOW. WS2812B and unspecified entries are excluded. LOW/HIGH are literal GPIO levels, not logical OFF/ON; all current lamps are HIGH-active.
+	- **LOW / HIGH** drive the currently selected pin as a digital output. Changing to another pin resets the previously driven test pin to LOW input mode. Leaving the submenu, leaving Debug or timing out resets only the currently driven test pin the same way.
+- **LED szalag:** test the addressable strip on **D4**. Set **LED db** to the physical strip length (**1-100**, default 100), confirm it, then choose **Inditas**. The first LED lights white; each short **joystick/select-button click** advances the single white pixel, wrapping from the last selected LED back to the first. The LCD shows **LED 1/100**, **LED 2/100**, etc., using one-based positions.
 	- While the test screen is active, up/down movements are ignored; the click is the stepper and there is no automatic movement or held-button repeat.
 	- **Hold and release** the joystick/select button to exit to the strip-test menu. Two minutes without a step click clears the test and returns to the main menu. Restart, leaving the view and normal game frames also clear all test pixels.
 	- The dedicated screen owns display rendering while active, so it uses its own rollover-safe inactivity timer with the same MenuIdleTimeoutSeconds setting. Clicks are handled by the input callback rather than waiting for an LCD refresh, preventing fast clicks from being lost or consumed as normal menu selections.
-	- D2 has only one FastLED controller and a fixed 100-pixel buffer. Game output remains 75 pixels with the remaining tail black. Test output lights only one white pixel at moderate brightness; no new recurring task or dynamic LED-buffer allocation is created. Maximum/default count is defined in [src/config/LedConfig.h](src/config/LedConfig.h).
-- **Digitalis:** scroll through D0-D53. General input pins show **LOW/HIGH**; D51 is labelled Jatek, D53 Menu. Configured outputs show **OUT**. UART pins D0/D1, LED data D2, buzzer D5, status output D13 and I2C D20/D21 are reserved and display their role instead of being converted to inputs or sampled.
+	- D4 has only one FastLED controller and a fixed 100-pixel buffer. Cyclon output remains 75 pixels with the remaining tail black; panel output uses mapped positions through 86. Test output lights only one white pixel at moderate brightness; no new recurring task or dynamic LED-buffer allocation is created. Maximum/default count is defined in [src/config/LedConfig.h](src/config/LedConfig.h).
+- **Digitalis:** scroll through D0-D53. General input pins show **LOW/HIGH**; D39 is labelled Jatek, D53 Menu. Configured outputs show **OUT**. UART pins D0/D1, strip data D4, buzzer D5, status output D13 and I2C D20/D21 are reserved and display their role instead of being converted to inputs or sampled.
 - **Analog:** scroll through all **A0-A15**, showing raw 10-bit readings **0-1023**. A9 is labelled Joy. An analog pin configured as a digital output shows OUT and is not read as an ADC input. **---** means not yet sampled; ERR denotes an invalid internal sample, not an automatic diagnosis of a disconnected sensor.
 - **Allapot:** current application state; Debug indicates that the game is stopped for input testing.
 - **Hibak:** separate rows for **Jatek task**, **Hang task** and **LCD 0x27**. Tasks show OK when scheduled or FALLBACK when their main-loop fallback is in use. The LCD address-only probe reports OK, NINCS (no ACK), I2C HIBA or TIMEOUT. It runs on Debug entry with a 25 ms Wire timeout; subsequent Wire timeouts remain visible until the next entry/probe.
 
-Digitalis/Analog scanning is read-only: it never switches pin modes, drives a test output, changes pull-ups or disables PWM. Gombok deliberately changes only the pull-up latch of existing safe digital/analog GPIO inputs while that test is open. Outside Gombok, the original pull-ups are restored; other unused inputs may float. A LOW reading can also mean a permanent ground connection or an external pull-down, not necessarily a mechanically pressed button. Analog voltages can be biased by the temporary pull-up during Gombok, so use the separate Analog view for voltage measurements. Never apply a voltage outside the Mega's 0-5 V input range or connect a test switch to a reserved/output pin.
+Digitalis/Analog scanning is read-only: it never switches pin modes, drives a test output, changes pull-ups or disables PWM. Gombok adds scoped pull-ups to existing safe input GPIO and temporarily drives free, polarity-defined lamp GPIO inactive; it never repurposes reserved pins or existing outputs. On exit, original input/pull-up settings are restored only for pins still owned by the test; other unused inputs may float. A LOW reading can also mean a permanent ground connection or an external pull-down, not necessarily a mechanically pressed button. Analog voltages can be biased by the temporary pull-up during Gombok, so use the separate Analog view for voltage measurements. Never apply a voltage outside the Mega's 0-5 V input range or connect a test switch to a reserved/output pin.
 
 The existing 5 ms task samples at most four digital pins and one analog channel per tick in Debug, plus all active button-test inputs when Gombok is open. Cached digital/analog channels refresh in about 80 ms; Gombok checks every task tick and retains short presses. The LCD redraws at 4 Hz. The first ADC conversion after switching channels is discarded to reduce cross-talk. The full analog sweep runs only in Debug; normal A9 navigation is polled in other modes except the dedicated LED-test screen, where directions are ignored. These are input observations plus task/LCD communication checks, not a full automatic hardware self-test (power, LED wiring and buzzer operation still require physical testing).
 
@@ -114,11 +160,11 @@ The existing 5 ms task samples at most four digital pins and one analog channel 
 
 The Mega uses **TaskManagerIO cooperative scheduling**, not OS threads or a new RTOS. The game/input task and audio task are registered once at startup; both have separate 5 ms update intervals in [src/config/BoardConfig.h](src/config/BoardConfig.h). The LCD/input framework has its own scheduled work. A task callback does a small amount of work and returns; no task waits for a note or an animation to finish. Arduino's timer-backed tone function generates the actual buzzer waveform asynchronously.
 
-The game task detects entry into win/loss feedback and requests a sound. The audio task advances that effect independently of LED animation. Debug and restart cancel unfinished effects; no music source is selectable. If the task queue is full, each failed task has its own main-loop fallback rather than retrying allocation from menu callbacks.
+The game task detects entry into win/loss feedback and requests a sound; Simon and Flasher reuse Cyclon's Win/Loss patterns. The audio task advances effects independently of LED animation and services Random's short tone. Leaving the owning level, Debug and restart cancel unfinished effects; no music source is selectable. New modes use the same two application tasks. If the task queue is full, each failed task has its own main-loop fallback rather than retrying allocation from menu callbacks.
 
 Customize pitches, note lengths and silent gaps in the WinPattern and LossPattern tables in [src/audio/SoundEffects.cpp](src/audio/SoundEffects.cpp). They live in AVR flash and use no dynamic allocation. Late audio updates skip expired notes; feedback completion also cancels stale audio so it cannot carry into the next level.
 
-This design can be extended with additional short scheduled callbacks. Keep these state machines on the cooperative loop; they are not thread-safe or intended to be called from an ISR. A future true multithreaded port would need queued commands or synchronization around shared state and buzzer ownership. WS2812B transmission can briefly mask timer interrupts on AVR, so small audio/timing jitter still needs checking on the device; adding a cooperative task does not remove that hardware limitation.
+Keep these state machines on the existing two-task cooperative loop; do not add a recurring task per game selection or press. They are not thread-safe or intended to be called from an ISR. A future true multithreaded port would need queued commands or synchronization around shared state and buzzer ownership. WS2812B transmission can briefly mask timer interrupts on AVR, so small audio/timing jitter still needs checking on the device; adding a cooperative task does not remove that hardware limitation.
 
 ## Build and regression tests
 
@@ -128,7 +174,9 @@ Use **Terminal > Run Build Task** for **Build Gyerek_jatek (Mega)**. The VS Code
 
 The runner uses Python's standard unittest for project/configuration checks and compiles the actual portable C++ modules for native regression tests. No Mega, serial port or upload is involved. It locates g++/clang++/Zig on PATH, or the optional pinned Zig package in the current Python or PlatformIO Python environment. If no native compiler is installed, install the package specified in [tools/requirements-test.txt](tools/requirements-test.txt) into a Python environment, or provide a C++ compiler. The runner also accepts a sanitizer flag when the native compiler supports undefined-behavior instrumentation. Every PlatformIO build also runs the read-only project/configuration checks through [tools/check_build.py](tools/check_build.py); this preflight requires no native compiler.
 
-Tests cover bouncing/held/boot buttons, initial position and repeated wraparound, every target and win-window boundary, all four speeds, score pixels, intro/feedback timing and rollover, invalid target clamping, repeated Debug entry/exit, and LCD clipping with guard bytes. Dedicated audio tests cover both result patterns and gaps, one-shot triggering on all four levels, cancellation, independent audio updates, timer rollover and delayed scheduling. Debug tests cover all input rows, reserved/output protection, bounded scan work, cache lifecycle, formatting, task fallback and I2C error status. Additional input tests exercise fixed-repeat joystick timing, debounced digital/analog button capture, mixed pin names, analog output/joystick protection and exact pull-up restoration. LED-state tests cover all lengths 1-100, exactly one lit pixel, manual stepping and wraparound, cancellation, one-based LCD text and the two-minute timeout/rollover. Standalone melody/player tests remain for future reuse. Project checks enforce the three-option root, matching designer definition, LED length/step/exit wiring, one D2 controller, fixed diagnostic rows, scoped pull-ups and exactly two permanent application tasks.
+Existing regression coverage includes bouncing/held/boot buttons, Cyclon positions, target boundaries, all four speeds, score pixels, intro/feedback timing and rollover, audio patterns/gaps/cancellation, LCD clipping, joystick repeats, digital/analog diagnostics, reserved/output protection, scoped pull-ups, digital-output selection/reset, task fallback and I2C status. Workbook cases cover multi-contact parsing, suffix-based pairing and reserved/shared-pin rejection; LED-test cases cover lengths 1–100, manual stepping/wraparound, cancellation, LCD numbering and timeout. Standalone melody/player tests remain for future reuse. Project checks reflect the new seven-option root and matching designer definition, while retaining LED-test/debug wiring, one strip controller, fixed diagnostic rows, scoped pull-ups and exactly two permanent application tasks. Panel/mapping/menu checks are included in the latest passing full suite.
+
+**2026-10-15 verification status:** the current session's Flasher Mega build and full suite passed: **118 native tests and 32 Python checks**. Static SRAM: **3,981 / 8,192 bytes**; flash: **60,542 / 253,952 bytes**. Flasher and the preserved lower-row correction have not been verified on hardware; **no firmware was uploaded** for this update. This documentation-only update did not rerun the build or suite.
 
 Native tests cannot verify real FastLED interrupt behavior, I2C communication, supply capacity or buzzer timing. Run those checks on the actual hardware before deployment.
 

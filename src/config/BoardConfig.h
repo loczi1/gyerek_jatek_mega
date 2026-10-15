@@ -6,7 +6,7 @@
 
 namespace board {
 
-constexpr uint8_t AnalogInputPin = A0;
+constexpr uint8_t AnalogInputPin = A0 + PotentiometerChannel;
 constexpr uint8_t EntropyInputPin = A1;
 constexpr uint8_t MenuJoystickPin = A0 + MenuJoystickChannel;
 constexpr unsigned long SerialBaud = 9600;
