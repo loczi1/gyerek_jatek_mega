@@ -8,6 +8,7 @@
 #include "debug/SystemChecks.h"
 #include "hardware/Diagnostics.h"
 #include "hardware/LedDisplay.h"
+#include "hardware/GameLamps.h"
 #include "ui/MenuInput.h"
 #include "ui/LcdText.h"
 #include <TaskManagerIO.h>
@@ -44,7 +45,7 @@ game::CycloneGame cyclone(pickTarget);
 audio::SoundEffects soundEffects(playTone, stopTone);
 app::ModeController controller(cyclone, soundEffects);
 game::PanelGames panel(pickBelow);
-enum class SelectedGame : uint8_t { None, Cyclone, Random, Simon, Flasher };
+enum class SelectedGame : uint8_t { None, Cyclone, Random, Simon, Flasher, Random2, Sorrend4, Sorrend5 };
 SelectedGame selectedGame = SelectedGame::None;
 MenuItem* gameScope = nullptr;
 uint8_t panelInputs[game::PanelInputCount];
@@ -95,6 +96,7 @@ uint32_t panelPressedMask() {
 }
 
 void stopGames(uint32_t now) {
+    gameLamps::setEnabled(false);
     panel.select(game::PanelMode::Disabled, now, 0);
     controller.select(app::Mode::Debug, now, gameButtonPressed());
     soundEffects.stop();
@@ -136,8 +138,12 @@ void renderLedTest(unsigned int, RenderPressMode) {
 }
 
 void drawMode() {
-    if (selectedGame == SelectedGame::Random || selectedGame == SelectedGame::Simon ||
-        selectedGame == SelectedGame::Flasher)
+    if (selectedGame == SelectedGame::Random2) {
+        gameLamps::draw(panel.lampInputMask(), panelInputs, panelInputCount);
+        leds::drawRandom2(panel, panelInputs, panelInputCount);
+    } else if (selectedGame == SelectedGame::Random || selectedGame == SelectedGame::Simon ||
+        selectedGame == SelectedGame::Flasher || selectedGame == SelectedGame::Sorrend4 ||
+        selectedGame == SelectedGame::Sorrend5)
         leds::drawPanel(panel);
     else if (selectedGame == SelectedGame::Cyclone) leds::draw(cyclone);
     else leds::clear();
@@ -191,19 +197,22 @@ void update() {
     if (selectedGame == SelectedGame::Cyclone) {
         if (controller.update(now, gameButtonPressed())) leds::draw(cyclone);
     } else if (selectedGame == SelectedGame::Random || selectedGame == SelectedGame::Simon ||
-               selectedGame == SelectedGame::Flasher) {
+               selectedGame == SelectedGame::Flasher || selectedGame == SelectedGame::Random2 ||
+               selectedGame == SelectedGame::Sorrend4 || selectedGame == SelectedGame::Sorrend5) {
         if (panel.update(now, panelPressedMask())) {
             const game::PanelFeedback feedback = panel.takeFeedback();
             if (feedback != game::PanelFeedback::None)
-                soundEffects.play(feedback == game::PanelFeedback::Win
-                    ? audio::Effect::Win : audio::Effect::Loss, now);
+                soundEffects.play(feedback == game::PanelFeedback::Melody ? audio::Effect::Playful :
+                    (feedback == game::PanelFeedback::Warning ? audio::Effect::Warning :
+                     (feedback == game::PanelFeedback::Win ? audio::Effect::Win : audio::Effect::Loss)), now);
             if (selectedGame == SelectedGame::Random) {
                 if (panel.frequency()) playTone(panel.frequency(), 250);
                 else stopTone();
-            } else if (feedback == game::PanelFeedback::None) {
+            } else if (feedback == game::PanelFeedback::None &&
+                       (selectedGame != SelectedGame::Random2 || panel.phase() != game::PanelPhase::Hit)) {
                 soundEffects.stop();
             }
-            leds::drawPanel(panel);
+            drawMode();
         }
     }
     diagnostics::update();
@@ -215,7 +224,9 @@ void update() {
 }
 
 void updateAudio() {
-    if (selectedGame == SelectedGame::Simon || selectedGame == SelectedGame::Flasher)
+    if (selectedGame == SelectedGame::Simon || selectedGame == SelectedGame::Flasher ||
+        selectedGame == SelectedGame::Random2 || selectedGame == SelectedGame::Sorrend4 ||
+        selectedGame == SelectedGame::Sorrend5)
         soundEffects.update(millis());
     else controller.updateAudio(millis());
 }
@@ -262,7 +273,7 @@ void playGame() {
     finishLedTest(false);
     diagnostics::setButtonTestEnabled(false, millis());
     diagnostics::setDigitalOutputTestEnabled(false);
-    panel.select(game::PanelMode::Disabled, millis(), 0);
+    stopGames(millis());
     selectedGame = SelectedGame::Cyclone;
     gameScope = &menuBackLevel2;
     renderer.turnOffResetLogic();
@@ -283,6 +294,7 @@ void selectPanelGame(SelectedGame selection, game::PanelMode mode, MenuItem* sco
     renderer.turnOffResetLogic();
     renderer.menuAltered();
     panel.select(mode, now, panelPressedMask());
+    gameLamps::setEnabled(selection == SelectedGame::Random2);
     drawMode();
 }
 
@@ -290,8 +302,24 @@ void playRandom() {
     selectPanelGame(SelectedGame::Random, game::PanelMode::Random, &menuBackLevel1);
 }
 
+void playRandom2() {
+    selectPanelGame(SelectedGame::Random2, game::PanelMode::Random2, &menuBackLevel1);
+}
+
 void playSimon() {
     selectPanelGame(SelectedGame::Simon, game::PanelMode::Simon, &menuBackLevel2);
+}
+
+void playSorrend3() {
+    selectPanelGame(SelectedGame::Simon, game::PanelMode::Simon, &menuBackLevel3);
+}
+
+void playSorrend4() {
+    selectPanelGame(SelectedGame::Sorrend4, game::PanelMode::Sorrend4, &menuBackLevel4);
+}
+
+void playSorrend5() {
+    selectPanelGame(SelectedGame::Sorrend5, game::PanelMode::Sorrend5, &menuBackLevel5);
 }
 
 void playFlasher() {
@@ -342,12 +370,16 @@ void refreshDiagnostics() {
         snprintf(status, sizeof(status), "Debug");
     } else if (selectedGame == SelectedGame::Random) {
         snprintf(status, sizeof(status), "Random");
+    } else if (selectedGame == SelectedGame::Random2) {
+        snprintf(status, sizeof(status), "Random 2");
     } else if (selectedGame == SelectedGame::Flasher) {
         snprintf(status, sizeof(status), "Sima villogo");
     } else if (selectedGame == SelectedGame::Simon) {
-        snprintf(status, sizeof(status), "Simon %u/%u",
+        snprintf(status, sizeof(status), "Sorrend %u/%u",
             static_cast<unsigned int>(panel.inputIndex()),
             static_cast<unsigned int>(panel.sequenceLength()));
+    } else if (selectedGame == SelectedGame::Sorrend4 || selectedGame == SelectedGame::Sorrend5) {
+        snprintf(status, sizeof(status), "Sorrend %u", selectedGame == SelectedGame::Sorrend4 ? 4U : 5U);
     } else if (selectedGame == SelectedGame::None) {
         snprintf(status, sizeof(status), "Valassz jatekot");
     } else {

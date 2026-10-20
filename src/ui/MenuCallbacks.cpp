@@ -13,8 +13,24 @@ void CALLBACK_FUNCTION RandomGame(int) {
     application::playRandom();
 }
 
+void CALLBACK_FUNCTION RandomGame2(int) {
+    application::playRandom2();
+}
+
 void CALLBACK_FUNCTION SimonGame(int) {
     application::playSimon();
+}
+
+void CALLBACK_FUNCTION SorrendGame3(int) {
+    application::playSorrend3();
+}
+
+void CALLBACK_FUNCTION SorrendGame4(int) {
+    application::playSorrend4();
+}
+
+void CALLBACK_FUNCTION SorrendGame5(int) {
+    application::playSorrend5();
 }
 
 void CALLBACK_FUNCTION FlasherGame(int) {

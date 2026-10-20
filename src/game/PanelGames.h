@@ -10,12 +10,14 @@ constexpr uint8_t PanelChannelCount = 11;
 constexpr uint8_t PanelInputCount = 32;
 constexpr uint8_t PanelNoChannel = 255;
 constexpr uint8_t PanelSequenceCapacity = 32;
+constexpr uint32_t Random2DurationMs = 1200;
+constexpr uint32_t Random2BeatMs = 150;
 
-enum class PanelMode : uint8_t { Disabled, Random, Simon, Flasher };
+enum class PanelMode : uint8_t { Disabled, Random, Simon, Flasher, Random2, Sorrend4, Sorrend5 };
 enum class PanelPhase : uint8_t {
     Disabled, Ready, Showing, Gap, Input, Hit, RoundWin, Loss
 };
-enum class PanelFeedback : uint8_t { None, Win, Loss };
+enum class PanelFeedback : uint8_t { None, Win, Loss, Melody, Warning };
 
 // Logical pressed bits, not GPIO numbers or polarity. Adapter maps bits 0..10
 // to BTN01..03, BTN07..14, in that order. Random accepts all 32 bits;
@@ -41,9 +43,25 @@ public:
     // Random tone only: 220..1760 Hz while Hit, otherwise zero. Adapter
     // starts/restarts its 250 ms tone on each Random Hit frame change.
     uint16_t frequency() const { return frequency_; }
+    // Random2 retains all simultaneous fresh presses for the short effect.
+    uint32_t lampInputMask() const { return lampInputMask_; }
+    uint8_t discoPixel(uint8_t index) const {
+        return static_cast<uint8_t>((discoStart_ + index * 23U) % 70U);
+    }
     uint8_t sequenceLength() const { return sequenceLength_; }
     uint8_t inputIndex() const { return inputIndex_; }
     uint32_t enabledMask() const;
+    bool isSearch() const { return mode_ == PanelMode::Sorrend4 || mode_ == PanelMode::Sorrend5; }
+    bool whiteTarget() const {
+        return isSearch() && (phase_ == PanelPhase::Showing || phase_ == PanelPhase::Input);
+    }
+    uint16_t distractorMask() const { return whiteTarget() ? distractors_ : 0; }
+    uint8_t distractorHue(uint8_t channel) const {
+        return static_cast<uint8_t>(distractorHue_ + channel * 23U);
+    }
+    uint32_t inputTimeoutMs() const {
+        return mode_ == PanelMode::Sorrend5 ? 2000U : (mode_ == PanelMode::Sorrend4 ? 5000U : 10000U);
+    }
 
 private:
     uint32_t (*randomBelow_)(uint32_t);
@@ -59,6 +77,12 @@ private:
     uint8_t litChannel_ = PanelNoChannel;
     uint8_t hue_ = 0;
     uint16_t frequency_ = 0;
+    uint32_t lampInputMask_ = 0;
+    uint32_t beatStarted_ = 0;
+    uint8_t discoStart_ = 0;
+    uint16_t distractors_ = 0;
+    uint8_t distractorHue_ = 0;
+    bool secondWarning_ = false;
 
     uint32_t pick(uint32_t bound);
     void resetButtons(uint32_t now, uint32_t pressedMask);

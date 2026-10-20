@@ -17,6 +17,7 @@ SOURCES = [
     "src/audio/SoundEffects.cpp",
     "src/game/CycloneGame.cpp",
     "src/game/PanelGames.cpp",
+    "src/game/PairedLampOutputs.cpp",
     "src/music/Melody.cpp",
     "src/music/MusicPlayer.cpp",
     "src/app/ModeController.cpp",

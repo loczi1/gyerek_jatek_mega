@@ -34,6 +34,21 @@
       }
     },
     {
+      "parentId": 30,
+      "type": "actionMenu",
+      "item": {
+        "name": "Random 2",
+        "variableName": "Random2",
+        "functionName": "RandomGame2",
+        "id": 38,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
       "parentId": 0,
       "type": "subMenu",
       "item": {
@@ -67,7 +82,7 @@
       "parentId": 31,
       "type": "actionMenu",
       "item": {
-        "name": "Simon mondja",
+        "name": "Sorrend",
         "variableName": "Simon",
         "functionName": "SimonGame",
         "id": 36,
@@ -109,6 +124,21 @@
       }
     },
     {
+      "parentId": 32,
+      "type": "actionMenu",
+      "item": {
+        "name": "Sorrend",
+        "variableName": "Sorrend3",
+        "functionName": "SorrendGame3",
+        "id": 39,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
       "parentId": 0,
       "type": "subMenu",
       "item": {
@@ -124,6 +154,21 @@
       }
     },
     {
+      "parentId": 33,
+      "type": "actionMenu",
+      "item": {
+        "name": "Sorrend",
+        "variableName": "Sorrend4",
+        "functionName": "SorrendGame4",
+        "id": 40,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
       "parentId": 0,
       "type": "subMenu",
       "item": {
@@ -131,6 +176,21 @@
         "name": "Szint 5",
         "variableName": "Level5",
         "id": 34,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 34,
+      "type": "actionMenu",
+      "item": {
+        "name": "Sorrend",
+        "variableName": "Sorrend5",
+        "functionName": "SorrendGame5",
+        "id": 41,
         "eepromAddress": -1,
         "readOnly": false,
         "localOnly": false,

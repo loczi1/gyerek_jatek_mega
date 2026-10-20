@@ -20,18 +20,29 @@ Az Ikarus kapcsoló és a beépített LED **külön csatlakozón** működik, de
 | 5 | D23 | D18 |
 | 6 | D51 | D19 |
 
-A bemenet a **Gombok / Digitalis**, a LED a **Digitalis ki** menüben tesztelhető. **A kapcsoló nem kapcsolja automatikusan a saját fényét**; Random módban is a 11 panellámpa egyikét választja véletlenszerűen. A címezhető LED-szalag adatvezetéke **D4**, nem D2. A beépített LED feszültségét, áramát és szükséges meghajtóáramkörét bekötés előtt ellenőrizni kell.
+A bemenet a **Gombok / Digitalis**, a LED a **Digitalis ki** menüben tesztelhető. **Random 2 módban a megnyomott Ikarus kapcsoló saját lámpája világít.** Az eredeti Random továbbra is a 11 panellámpa egyikét választja véletlenszerűen; Debug alatt nincs automatikus gomb–lámpa kapcsolás. A címezhető LED-szalag adatvezetéke **D4**, nem D2. A beépített LED feszültségét, áramát és szükséges meghajtóáramkörét bekötés előtt ellenőrizni kell.
 
 ## Főmenü és játékválasztás
 
-- A főmenü: **Szint1**, **Szint2**, **Szint3**, **Szint4**, **Szint5**, **Ujrainditas**, **Debug**. Szint1 alatt **Random**, Szint2 alatt sorrendben **Cyclon**, **Simon mondja**, majd **Sima villogó** választható (az LCD ékezet nélküli felirata: **Sima villogo**, belső módja: `Flasher`). Szint3–5 kérésre fenntartott, csak visszalépést tartalmazó menü.
+- A főmenü: **Szint1**, **Szint2**, **Szint3**, **Szint4**, **Szint5**, **Ujrainditas**, **Debug**. Szint1 alatt sorrendben **Random**, **Random 2**, Szint2 alatt **Cyclon**, **Simon mondja**, majd **Sima villogó** választható (az LCD ékezet nélküli felirata: **Sima villogo**, belső módja: `Flasher`). Szint3–5 kérésre fenntartott, csak visszalépést tartalmazó menü.
 - Bekapcsoláskor **nincs kiválasztott játék, a szalag sötét**. Előbb válassz játékot; a főmenü szintjei nem azonosak a Cyclon négy belső nehézségével.
-- **Bármely játék (Cyclon, Random, Simon vagy Sima villogó / Flasher) kiválasztásakor az automatikus menü-visszalépés teljesen kikapcsol.** Készenlétben, játék és eredményjelzés közben, valamint a menet befejezése vagy hiba után is kiválasztva marad a játék, **menü-időkorlát nélkül**. A Simon és a Sima villogó 10 másodperces bemeneti tétlenségi időkorlátja ettől független játékszabály.
+- **Bármely játék (Cyclon, Random, Random 2, Simon vagy Sima villogó / Flasher) kiválasztásakor az automatikus menü-visszalépés teljesen kikapcsol.** Készenlétben, játék és eredményjelzés közben, valamint a menet befejezése vagy hiba után is kiválasztva marad a játék, **menü-időkorlát nélkül**. A Simon és a Sima villogó 10 másodperces bemeneti tétlenségi időkorlátja ettől független játékszabály.
 - A játékot tartalmazó szintmenü kézi elhagyása (visszalépés, főmenü vagy másik menü), a Debug és az újraindítás megszakítja a játékot és a hangot, mind a **100 tárolt LED-helyet** törli, és visszaállítja a normál menü/Debug **120 másodperces** időkorlátját. A Debugból visszatérve nincs automatikus folytatás: válassz újra játékot.
 
 ## Szint1 – Random
 
 A **Random** kiválasztása után minden biztonságos, konfigurált digitális gomb- és kapcsolóérintkező használható, a Cyclon D39 gombja és az Ikarus kapcsolók is. A menü és a perifériák foglalt bemenetei kimaradnak. Minden új, pergésmentesített megnyomás a **11 panellámpa egyikét** gyújtja fel véletlen színnel, és **250 ms-os, 220–1760 Hz közötti hangot** ad. Nem a megnyomott Ikarus kapcsoló saját lámpáját kapcsolja. Új eseményhez engedd fel a gombot; a Random újbóli kiválasztása alaphelyzetbe állítja.
+
+## Szint1 – Random 2
+
+1. Válaszd a **Szint1 / Random 2** menüpontot. Bármely biztonságos, konfigurált gomb vagy kapcsolóérintkező használható, az Ikarus kapcsolók és a D39 is; a menügomb és a joystick nem játszik.
+2. Új gombnyomásra **a hozzá tartozó lámpa világít 1,2 másodpercig**, és rövid, vidám dallam szól. Mind a hat Ikarus saját lámpája működik; az öt fémkapcsolóhoz a 76–80. LED tartozik. A panelgombok az alábbi javított kiosztást használják.
+3. A dallam mellett a szalag első 70 LED-je közül **három színes fény váltakozik 150 ms-onként**, egyszerű diszkóhatásként. A rövid, saját nyolcütemes dallam memóriaigénye kicsi; nem a teljes Greensleeves szól.
+4. Egyszerre több frissen megnyomott gomb saját lámpái együtt világítanak. Új nyomás újraindítja a dallamot és lecseréli az előző fényhatást. A gombot új eseményhez fel kell engedni; nyomva tartva nem ismétel. A kiválasztáskor már nyomott gombot is előbb engedd fel.
+5. Az önálló lámpával nem párosított **BTN05, BTN06, BTN15 (D39) és SW06** érintkezők csak a dallamot és a diszkófényt indítják. A program nem talál ki hozzájuk saját lámpát.
+6. Az 1,2 másodperc végén a fény és a hang leáll, de a játék időkorlát nélkül kiválasztva marad. Újbóli kiválasztás alaphelyzetbe állítja. Visszalépés, másik játék, Debug vagy újraindítás azonnal megszakítja a hatást, kikapcsolja a saját kezelésű Ikarus lámpákat és törli mind a 100 szalaghelyet.
+
+Az eredeti **Random** működése változatlan: ott véletlen panellámpa és egyetlen rövid hang jár a gombnyomásért.
 
 ## Szint2 – Simon mondja
 
@@ -79,7 +90,7 @@ A menü a hangjelzések alatt is használható.
 
 ## Debug – bemenetek és hibák ellenőrzése
 
-Az Excel `ActiveLevel` mezője megadja a lámpa kapcsolási szintjét: a hat tranzisztoros Ikarus kimenetnél **HIGH = világít, LOW = kikapcsolva**. A `WS2812B` címkéjű kimenet LED-szalag, nem közvetlenül kapcsolható lámpa. A kötőjel utáni azonosító összerendeli a gombot/kapcsolót és a fényét, például `BTN01-left-blue_1` ↔ `LED01-left-blue_1`; a `down-5_N` ↔ `strip-down5_N` névváltozat is támogatott. Összesen 22 pár szerepel a konfigurációban; az Ikarus kapcsolók saját lámpája továbbra sem kapcsol be automatikusan.
+Az Excel `ActiveLevel` mezője megadja a lámpa kapcsolási szintjét: a hat tranzisztoros Ikarus kimenetnél **HIGH = világít, LOW = kikapcsolva**. A `WS2812B` címkéjű kimenet LED-szalag, nem közvetlenül kapcsolható lámpa. A kötőjel utáni azonosító összerendeli a gombot/kapcsolót és a fényét, például `BTN01-left-blue_1` ↔ `LED01-left-blue_1`; a `down-5_N` ↔ `strip-down5_N` névváltozat is támogatott. Összesen 22 pár szerepel a konfigurációban; a saját Ikarus lámpát csak a **Random 2** játék kapcsolja gombnyomásra, a Debug nem.
 
 A Debug megnyitása leállítja az aktuális játékot és a hangot, törli a szalagot. Így a játékgomb is biztonságosan tesztelhető. A főmenübe visszatérve nincs kiválasztott játék; újra ki kell választanod, nem folytatódik magától.
 
@@ -107,4 +118,4 @@ A Debug megnyitása leállítja az aktuális játékot és a hangot, törli a sz
 
 A joystickkal görgess, a visszalépő sort a menügombbal válaszd ki. Az értékek automatikusan frissülnek. A Gombok teszthez a gombot a megfelelő bemenet és a közös GND közé kösd; külső lehúzó ellenállás nem szükséges. Egy állandó földelés vagy külső lehúzás szintén LOW-ként látszik. A bekötetlen bemenetek a többi nézetben ingadozhatnak, ez önmagában nem hiba. Csak ismert, 0–5 V-os jelhez és közös földhöz csatlakoztass tesztáramkört; foglalt vagy kimeneti csatlakozót ne köss a földre.
 
-**Fontos:** a gomb nyomva tartása nem indít ismételten új menetet. Bekapcsoláskor nincs kiválasztott játék, a szalag sötét. Az új játékmódok is a meglévő két alkalmazásfeladatot használják. A jelen munkamenet Sima villogó módot tartalmazó Mega-fordítása és teljes automatikus tesztcsomagja sikeres: **118 natív teszt és 32 Python-ellenőrzés**; statikus SRAM: **3981 / 8192 bájt**, flash: **60542 / 253952 bájt**. Az új működés és a megőrzött alsósor-javítás **hardveren nincs ellenőrizve, feltöltés nem történt**. A kizárólag dokumentációs frissítéskor a fordítást és a teszteket nem futtattuk újra.
+**Ellenőrzés, 2026-10-19:** a Random 2-t tartalmazó Mega-fordítás és a teljes normál, valamint nem definiált műveleteket ellenőrző tesztfuttatás sikeres: **126 natív teszt és 33 Python-ellenőrzés**; statikus SRAM: **4123 / 8192 bájt**, flash: **62336 / 253952 bájt**. Továbbra is két alkalmazásfeladat működik. A Random 2 és a megőrzött alsósor-javítás **ebben a munkamenetben hardveren nincs ellenőrizve, feltöltés nem történt**.

@@ -5,7 +5,7 @@
 
 namespace audio {
 
-enum class Effect : uint8_t { None, Win, Loss };
+enum class Effect : uint8_t { None, Win, Loss, Playful, Warning };
 
 // Cooperative, allocation-free sequencer. Call update() from an audio task;
 // output callbacks start/stop a tone and must never wait for it to finish.

@@ -1,4 +1,5 @@
 #include "SoundEffects.h"
+#include "game/PanelGames.h"
 
 #ifdef ARDUINO_ARCH_AVR
 #include <avr/pgmspace.h>
@@ -23,16 +24,31 @@ const Step WinPattern[] EFFECT_STORAGE = {
 const Step LossPattern[] EFFECT_STORAGE = {
     {392, 180}, {0, 40}, {294, 180}, {0, 40}, {196, 300}
 };
+const Step WarningPattern[] EFFECT_STORAGE = {{880, 80}};
+// Tiny original tune, not the full standalone score/player. Eight 150 ms
+// beats share Random2's light-effect duration; just 32 bytes of flash data.
+const Step PlayfulPattern[] EFFECT_STORAGE = {
+    {523, game::Random2BeatMs}, {659, game::Random2BeatMs},
+    {784, game::Random2BeatMs}, {659, game::Random2BeatMs},
+    {698, game::Random2BeatMs}, {587, game::Random2BeatMs},
+    {523, game::Random2BeatMs}, {0, game::Random2BeatMs}
+};
+static_assert(sizeof(PlayfulPattern) / sizeof(PlayfulPattern[0]) * game::Random2BeatMs ==
+              game::Random2DurationMs, "Random2 audio/light duration mismatch");
 
 uint8_t stepCount(Effect effect) {
     if (effect == Effect::Win) return sizeof(WinPattern) / sizeof(WinPattern[0]);
     if (effect == Effect::Loss) return sizeof(LossPattern) / sizeof(LossPattern[0]);
+    if (effect == Effect::Playful) return sizeof(PlayfulPattern) / sizeof(PlayfulPattern[0]);
+    if (effect == Effect::Warning) return sizeof(WarningPattern) / sizeof(WarningPattern[0]);
     return 0;
 }
 
 Step readStep(Effect effect, uint8_t index) {
     if (index >= stepCount(effect)) return {0, 0};
-    const Step* pattern = effect == Effect::Win ? WinPattern : LossPattern;
+    const Step* pattern = effect == Effect::Win ? WinPattern :
+        (effect == Effect::Playful ? PlayfulPattern :
+         (effect == Effect::Warning ? WarningPattern : LossPattern));
 #ifdef ARDUINO_ARCH_AVR
     return {
         pgm_read_word(&pattern[index].frequency),

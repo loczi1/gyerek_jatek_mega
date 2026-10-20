@@ -1,5 +1,6 @@
 #include "test_audio.h"
 #include "audio/SoundEffects.h"
+#include "game/PanelGames.h"
 #include "app/ModeController.h"
 #include "music/MusicPlayer.h"
 #include <stdint.h>
@@ -83,6 +84,38 @@ uint32_t triggerLoss(Fixture& fixture, uint32_t now) {
     CHECK(fixture.modes.update(now, true));
     CHECK(fixture.game.state() == game::State::LossFeedback);
     return now;
+}
+
+void testPlayfulMelodyBeatsAndRollover() {
+    audio::SoundEffects effects(playTone, stopTone);
+    const uint32_t now = UINT32_MAX - 50U;
+    const uint16_t notes[] = {523, 659, 784, 659, 698, 587, 523};
+    effects.play(audio::Effect::Playful, now);
+    for (uint8_t i = 0; i < 7; ++i) {
+        effects.update(now + i * game::Random2BeatMs);
+        CHECK(tones == i + 1U);
+        CHECK(events[i].frequency == notes[i]);
+        CHECK(events[i].durationMs == game::Random2BeatMs);
+        effects.update(now + (i + 1U) * game::Random2BeatMs - 1U);
+        CHECK(tones == i + 1U);
+    }
+    effects.update(now + 1050U);
+    CHECK(stops == 1 && effects.isPlaying());
+    effects.update(now + game::Random2DurationMs);
+    CHECK(!effects.isPlaying() && tones == 7);
+}
+
+void testPlayfulReplacementDelayAndCancellation() {
+    audio::SoundEffects effects(playTone, stopTone);
+    effects.play(audio::Effect::Playful, 0);
+    effects.update(920);
+    CHECK(tones == 2 && events[1].frequency == 523 && events[1].durationMs == 130);
+    effects.play(audio::Effect::Playful, 930);
+    CHECK(stops == 1 && tones == 3);
+    CHECK(events[3].frequency == 523 && events[3].durationMs == 150);
+    effects.stop();
+    effects.update(5000);
+    CHECK(!effects.isPlaying() && stops == 2 && tones == 3);
 }
 
 void testWinPatternAndSilenceGaps() {
@@ -333,6 +366,8 @@ void testNoSelectionAndNullOutputAreSafe() {
 struct Test { const char* name; void (*run)(); };
 
 const Test Tests[] = {
+    {"Random2 playful melody beats and rollover", testPlayfulMelodyBeatsAndRollover},
+    {"Random2 melody replacement, delay and cancellation", testPlayfulReplacementDelayAndCancellation},
     {"rising win chime and silent gaps", testWinPatternAndSilenceGaps},
     {"descending loss sound and silent gaps", testLossPatternAndSilenceGaps},
     {"sound effect timer rollover", testEffectTimerRollover},

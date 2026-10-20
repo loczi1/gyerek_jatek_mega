@@ -101,10 +101,12 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual([entry["type"] for entry in roots], ["subMenu"] * 5 + ["actionMenu", "subMenu"])
         self.assertEqual([entry["item"]["id"] for entry in roots], [30, 31, 32, 33, 34, 5, 7])
         expected_children = {
-            30: [("Random", "Random", "RandomGame", 35)],
-            31: [("Cyclon", "Jatek", "Jatek", 10), ("Simon mondja", "Simon", "SimonGame", 36),
+            30: [("Random", "Random", "RandomGame", 35), ("Random 2", "Random2", "RandomGame2", 38)],
+              31: [("Cyclon", "Jatek", "Jatek", 10), ("Sorrend", "Simon", "SimonGame", 36),
                  ("Sima villogo", "Flasher", "FlasherGame", 37)],
-            32: [], 33: [], 34: [],
+              32: [("Sorrend", "Sorrend3", "SorrendGame3", 39)],
+              33: [("Sorrend", "Sorrend4", "SorrendGame4", 40)],
+              34: [("Sorrend", "Sorrend5", "SorrendGame5", 41)],
         }
         for parent_id, expected in expected_children.items():
             children = [entry for entry in definition["items"] if entry["parentId"] == parent_id]
@@ -120,8 +122,12 @@ class ProjectTests(unittest.TestCase):
         self.assertIn("inline MenuItem& rootMenuItem() { return menuLevel1; }", header)
         callbacks = (ROOT / "src/ui/MenuCallbacks.cpp").read_text(encoding="utf-8")
         for variable, callback, function in (("Random", "RandomGame", "playRandom"),
+                                             ("Random2", "RandomGame2", "playRandom2"),
                                              ("Jatek", "Jatek", "playGame"),
                                              ("Simon", "SimonGame", "playSimon"),
+                                             ("Sorrend3", "SorrendGame3", "playSorrend3"),
+                                             ("Sorrend4", "SorrendGame4", "playSorrend4"),
+                                             ("Sorrend5", "SorrendGame5", "playSorrend5"),
                                              ("Flasher", "FlasherGame", "playFlasher")):
             self.assertIn(f"extern ActionMenuItem menu{variable};", header)
             self.assertRegex(source, rf"minfo{variable}\s*=\s*\{{[^\n]*, {callback} \}};")
@@ -136,8 +142,34 @@ class ProjectTests(unittest.TestCase):
         debug_ids = {7, 20, 600}
         debug_children = [entry for entry in definition["items"] if entry["parentId"] in debug_ids]
         self.assertTrue(all(entry["item"]["variableName"] not in
-                    ("Random", "Jatek", "Simon", "Flasher", "Level1", "Level2", "Level3", "Level4", "Level5")
+                    ("Random", "Random2", "Jatek", "Simon", "Flasher", "Sorrend3", "Sorrend4", "Sorrend5",
+                     "Level1", "Level2", "Level3", "Level4", "Level5")
                     for entry in debug_children))
+
+    def test_sorrend_application_bindings_scopes_and_task_participation(self):
+        header = (ROOT / "src/app/Application.h").read_text(encoding="utf-8")
+        app = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
+        for function, selection, mode, level in (
+                ("playSimon", "Simon", "Simon", 2),
+                ("playSorrend3", "Simon", "Simon", 3),
+                ("playSorrend4", "Sorrend4", "Sorrend4", 4),
+                ("playSorrend5", "Sorrend5", "Sorrend5", 5)):
+            with self.subTest(function=function):
+                self.assertIn(f"void {function}();", header)
+                self.assertRegex(app, rf"void {function}\(\)\s*\{{\s*"
+                                 rf"selectPanelGame\(SelectedGame::{selection},\s*"
+                                 rf"game::PanelMode::{mode},\s*&menuBackLevel{level}\);\s*\}}")
+        draw = app.split("void drawMode()", 1)[1].split("void synchronizeDebugView", 1)[0]
+        update = app.split("void update()", 1)[1].split("void updateAudio()", 1)[0]
+        audio = app.split("void updateAudio()", 1)[1].split("} // namespace", 1)[0]
+        for selection in ("Sorrend4", "Sorrend5"):
+            for section, operation in ((draw, "leds::drawPanel(panel);"),
+                                       (update, "panel.update(now, panelPressedMask())"),
+                                       (audio, "soundEffects.update(millis());")):
+                with self.subTest(selection=selection, operation=operation):
+                    self.assertRegex(section, rf"(?:if|else if)\s*\([^{{;]*"
+                                     rf"selectedGame == SelectedGame::{selection}\b[^{{;]*\)\s*"
+                                     rf"(?:\{{\s*)?(?:(?!\n    \}})[\s\S])*?{re.escape(operation)}")
 
     def test_panel_games_hardware_wiring_and_cancellation(self):
         app = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
@@ -169,6 +201,31 @@ class ProjectTests(unittest.TestCase):
         self.assertIn("pixel > 0 && pixel <= board::LedStripCapacity", frame)
         self.assertIn("pixels[pixel - 1]", frame)
         self.assertIn("board::panelStripPixel(currentGame.litChannel())", frame)
+
+    def test_random2_lamp_audio_and_cancellation_integration(self):
+        app = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
+        self.assertIn("game::PanelMode::Random2, &menuBackLevel1", app)
+        self.assertIn("gameLamps::setEnabled(selection == SelectedGame::Random2);", app)
+        stop = app.split("void stopGames", 1)[1].split("void finishLedTest", 1)[0]
+        self.assertIn("gameLamps::setEnabled(false);", stop)
+        cyclone = app.split("void playGame()", 1)[1].split("void selectPanelGame", 1)[0]
+        self.assertIn("stopGames(millis());", cyclone)
+        self.assertIn("gameLamps::draw(panel.lampInputMask(), panelInputs, panelInputCount);", app)
+        self.assertIn("leds::drawRandom2(panel, panelInputs, panelInputCount);", app)
+        self.assertIn("game::PanelFeedback::Melody ? audio::Effect::Playful", app)
+        audio = app.split("void updateAudio()", 1)[1].split("} // namespace", 1)[0]
+        self.assertIn("selectedGame == SelectedGame::Random2", audio)
+        self.assertIn("soundEffects.update(millis());", audio)
+        selection = app.split("void selectPanelGame", 1)[1].split("void playRandom()", 1)[0]
+        self.assertLess(selection.index("diagnostics::setDigitalOutputTestEnabled(false)"),
+                        selection.index("gameLamps::setEnabled"))
+        self.assertLess(selection.index("diagnostics::setButtonTestEnabled(false"),
+                        selection.index("gameLamps::setEnabled"))
+        hardware = (ROOT / "src/hardware/LedDisplay.cpp").read_text(encoding="utf-8")
+        frame = hardware.split("void drawRandom2", 1)[1].split("void drawTest", 1)[0]
+        self.assertIn("fill_solid(pixels, board::LedStripCapacity, CRGB::Black);", frame)
+        self.assertIn("board::pairedStripPixel(inputs[i])", frame)
+        self.assertIn("pixel > 0 && pixel <= board::LedStripCapacity", frame)
 
     def test_debug_lists_cover_inputs_with_non_overlapping_ids(self):
         definition = json.loads((ROOT / "Gyerek_jatek_arduinomega.emf").read_text(encoding="utf-8"))

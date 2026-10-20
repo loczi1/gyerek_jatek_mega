@@ -8,6 +8,8 @@ Use after changes affecting inputs, navigation, menu behavior, audio or LED outp
 
 The **2026-10-14** workbook changes the strip to D4 and the game button to D39, and defines six Ikarus switch/LED pairs. These updated assignments have not been confirmed on hardware by this session.
 
+**2026-10-19 Random 2 update:** Mega build passed, **126 native tests and 33 Python checks** passed normally and with undefined-behavior instrumentation; static SRAM **4,123 / 8,192 bytes**, flash **62,336 / 253,952 bytes**. No upload or current-session hardware tests. The new Random 2 cases below remain unchecked; the older terminal upload does not verify this revision.
+
 ## Record before testing
 
 | Field | Value to record |
@@ -31,7 +33,7 @@ The **2026-10-14** workbook changes the strip to D4 and the game button to D39, 
 
 ## Menu and navigation
 
-- [ ] Root contains Szint1, Szint2, Szint3, Szint4, Szint5, Ujrainditas and Debug. Szint1 offers Random; Szint2 offers Cyclon, Simon mondja, then Sima villogó with the ASCII LCD label **Sima villogo**. Szint3–5 intentionally contain Back only; no music selector.
+- [ ] Root contains Szint1, Szint2, Szint3, Szint4, Szint5, Ujrainditas and Debug. Szint1 offers Random, then Random 2; Szint2 offers Cyclon, Simon mondja, then Sima villogó with the ASCII LCD label **Sima villogo**. Szint3–5 intentionally contain Back only; no music selector.
 - [ ] Short up/down movement produces one step; hold waits about 500 ms, then repeats one step per 300 ms without speeding up.
 - [ ] Releasing to centre stops movement. Entering/leaving a list or holding select does not carry movement into another view.
 - [ ] Scroll to both ends of Digitalis, Analog and Gombok; all expected rows are reachable without unexpected cursor jumps.
@@ -42,7 +44,7 @@ The **2026-10-14** workbook changes the strip to D4 and the game button to D39, 
 - [ ] Boot with buttons held: no selected game, no sound, strip dark. Selecting Cyclon in Szint2 waits for a fresh D39 press; release held D39 before starting.
 - [ ] Check all four internal Cyclon difficulties and target-window boundaries; movement wraps without stale pixels. These are separate from root Szint1–5.
 - [ ] Win and loss each produce one distinct sound plus three matching green/red flashes. Menu remains usable.
-- [ ] For **each selected game (Cyclon, Random, Simon and Flasher)**, wait longer than 120 seconds without menu interaction across ready, gameplay and result states, including ready after completion/failure: **no automatic menu return or deselection** occurs. Simon's and Flasher's 10-second input inactivity timeouts may end a round but must leave the game selected. Keep providing game inputs to extend active play beyond 120 seconds; individual feedback phases are shorter. Selection disables tcMenu reset logic entirely via `renderer.turnOffResetLogic()`.
+- [ ] For **each selected game (Cyclon, Random, Random 2, Simon and Flasher)**, wait longer than 120 seconds without menu interaction across ready, gameplay and result states, including ready after completion/failure: **no automatic menu return or deselection** occurs. Simon's and Flasher's 10-second input inactivity timeouts may end a round but must leave the game selected. Keep providing game inputs to extend active play beyond 120 seconds; individual feedback phases are shorter. Selection disables tcMenu reset logic entirely via `renderer.turnOffResetLogic()`.
 - [ ] For each game, manually leave its owning level submenu using Back/root or another menu during active play/feedback: game, tone and all 100 LEDs clear, including pixels above 75. No further game input is accepted until selection. Normal 120-second menu/Debug auto-return is restored after cancellation, including Debug entry and restart.
 - [ ] Debug entry cancels every game and sound and clears all 100 LEDs. Returning to root does not resume or select a game; select again explicitly.
 - [ ] Ujrainditas cancels every game/feedback, tone and all 100 LEDs, leaving no game selected. Repeated selection/exit does not create new recurring tasks (only the existing two application tasks).
@@ -53,6 +55,16 @@ The **2026-10-14** workbook changes the strip to D4 and the game button to D39, 
 - [ ] Each press selects one of 11 panel lamps with a random hue and a 220–1760 Hz tone lasting 250 ms. A held/bouncing contact does not repeatedly trigger; release allows another press.
 - [ ] Ikarus presses do not automatically light their matching built-in GPIO lamp. Confirm all 11 strip lamps are reachable with the mapping above.
 - [ ] Re-selecting Random resets it. Manual Back/menu leave/Debug/restart cancels even a currently sounding tone and clears every pixel. Leaving Random idle for more than 120 seconds does not cancel selection.
+
+## Szint1 — Random 2
+
+- [ ] Selection with a held input is silent/dark until release and a fresh press. Every safe configured input participates; joystick/menu/peripherals do not trigger the effect.
+- [ ] Check each panel button against its own lamp, particularly corrected BTN07–11 → 75/74/73/72/71. SW01–05 light pixels 76–80. Each Ikarus input lights ONLY its own GPIO lamp: D52/D2, D50/D16, D46/D17, D48/D3, D23/D18, D51/D19; HIGH-active current wiring.
+- [ ] BTN05/BTN06/BTN15 (D39) and SW06 contacts D25/D24 have no assigned lamp but still play the short tune and disco. Do not invent a pair by changing the workbook.
+- [ ] Each fresh press gives a 1.2-second effect, seven short notes plus one silent beat; three randomly colored pixels within strip positions 1–70 change about every 150 ms. The paired lamp remains lit throughout. Listen for unacceptable FastLED/buzzer jitter on real hardware.
+- [ ] Simultaneous fresh presses light their corresponding lamps together. Another fresh press during playback replaces the old lamps and restarts the tune/disco; holding or bouncing does not repeat. After 1.2 seconds all game-owned lamps and strip pixels are dark.
+- [ ] Reselect Random 2 during playback; leave Szint1; switch to Random, Cyclon, Simon or Flasher; enter Debug; restart. Each path stops the old tune immediately, clears all 100 strip pixels and releases its Ikarus outputs inactive, restoring previous input/pull-up modes. Debug Gombok and Digitalis ki still work afterward. No extra tasks accumulate.
+- [ ] Wait over 120 seconds after the effect ends: Random 2 stays selected. Original Random still chooses a random panel lamp with a 250 ms tone and does NOT light a paired Ikarus GPIO lamp.
 
 ## Szint2 — Simon mondja
 

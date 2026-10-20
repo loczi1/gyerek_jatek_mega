@@ -43,5 +43,36 @@ inline uint8_t panelStripPixel(uint8_t channel) {
     return 0;
 }
 
+// Random2 resolves every safe input through workbook pairs. Keep the physical
+// lower-row correction above authoritative for the eleven panel buttons.
+inline uint8_t pairedStripPixel(uint8_t inputPin) {
+    for (uint8_t i = 0; i < game::PanelChannelCount; ++i)
+        if (panelInputPin(i) == inputPin) return panelStripPixel(i);
+    for (const auto& pair : generated::pins::LampPairs) {
+        const auto input = generated::pins::definition(pair.inputControl);
+        const auto lamp = generated::pins::definition(pair.lampControl);
+        if ((input.primaryPin == inputPin || input.secondaryPin == inputPin ||
+             input.tertiaryPin == inputPin) && inputPin != generated::pins::InvalidPin &&
+            lamp.activeLevel == generated::pins::ActiveLevel::Ws2812b)
+            return lamp.stripPixel;
+    }
+    return 0;
+}
+
+inline uint8_t pairedGpioLamp(uint8_t inputPin) {
+    if (inputPin == generated::pins::InvalidPin) return generated::pins::InvalidPin;
+    for (const auto& pair : generated::pins::LampPairs) {
+        const auto input = generated::pins::definition(pair.inputControl);
+        const auto lamp = generated::pins::definition(pair.lampControl);
+        if ((input.primaryPin == inputPin || input.secondaryPin == inputPin ||
+             input.tertiaryPin == inputPin) &&
+            lamp.type == generated::pins::PinType::DigitalOut &&
+            (lamp.activeLevel == generated::pins::ActiveLevel::High ||
+             lamp.activeLevel == generated::pins::ActiveLevel::Low))
+            return lamp.primaryPin;
+    }
+    return generated::pins::InvalidPin;
+}
+
 } // namespace board
 #endif

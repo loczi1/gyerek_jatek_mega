@@ -77,9 +77,33 @@ void draw(const game::CycloneGame& currentGame) {
 void drawPanel(const game::PanelGames& currentGame) {
     fill_solid(pixels, board::LedStripCapacity, CRGB::Black);
     FastLED.setBrightness(board::GameBrightness);
+    for (uint8_t channel = 0; channel < game::PanelChannelCount; ++channel) {
+        if (!(currentGame.distractorMask() & (uint16_t(1) << channel))) continue;
+        const uint8_t distractorPixel = board::panelStripPixel(channel);
+        if (distractorPixel > 0 && distractorPixel <= board::LedStripCapacity)
+            pixels[distractorPixel - 1] = CHSV(currentGame.distractorHue(channel), 255, 255);
+    }
     const uint8_t pixel = board::panelStripPixel(currentGame.litChannel());
     if (pixel > 0 && pixel <= board::LedStripCapacity)
-        pixels[pixel - 1] = CHSV(currentGame.hue(), 255, 255);
+        pixels[pixel - 1] = currentGame.whiteTarget() ? CRGB(CRGB::White) :
+            CRGB(CHSV(currentGame.hue(), 255, 255));
+    FastLED.show();
+}
+
+void drawRandom2(const game::PanelGames& currentGame, const uint8_t* inputs, uint8_t count) {
+    fill_solid(pixels, board::LedStripCapacity, CRGB::Black);
+    FastLED.setBrightness(board::GameBrightness);
+    if (currentGame.phase() == game::PanelPhase::Hit) {
+        // Three changing pixels on the Cyclon track, away from paired lamps.
+        for (uint8_t i = 0; i < 3; ++i)
+            pixels[currentGame.discoPixel(i)] = CHSV(currentGame.hue() + i * 80U, 255, 160);
+        for (uint8_t i = 0; inputs && i < count && i < game::PanelInputCount; ++i) {
+            if (!(currentGame.lampInputMask() & (uint32_t(1) << i))) continue;
+            const uint8_t pixel = board::pairedStripPixel(inputs[i]);
+            if (pixel > 0 && pixel <= board::LedStripCapacity)
+                pixels[pixel - 1] = CHSV(currentGame.hue(), 255, 255);
+        }
+    }
     FastLED.show();
 }
 

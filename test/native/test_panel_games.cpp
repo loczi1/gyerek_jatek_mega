@@ -1,5 +1,7 @@
 #include "test_panel_games.h"
 #include "game/PanelGames.h"
+#include "game/PairedLampOutputs.h"
+#include "debug/DigitalOutputTester.h"
 #include "config/PanelConfig.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -432,8 +434,196 @@ void testFlasherHeldInputsReselectionAndCancel() {
     CHECK(!panel.update(now + 1000U, 1));
 }
 
+void testRandom2AllInputsAndChords() {
+    for (uint8_t i = 0; i < game::PanelInputCount; ++i) {
+        game::PanelGames panel(randomBelow);
+        panel.select(game::PanelMode::Random2, 0, 0);
+        CHECK(panel.enabledMask() == UINT32_MAX);
+        chosen = UINT32_MAX; // Faulty/random boundary callback stays bounded.
+        const uint32_t mask = uint32_t(1) << i;
+        const uint32_t now = press(panel, 0, mask);
+        CHECK(panel.lampInputMask() == mask);
+        CHECK(panel.phase() == game::PanelPhase::Hit);
+        CHECK(panel.sequenceLength() == 0 && panel.frequency() == 0);
+        CHECK(panel.takeFeedback() == game::PanelFeedback::Melody);
+        CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+        for (uint8_t pixel = 0; pixel < 3; ++pixel) CHECK(panel.discoPixel(pixel) < 70);
+        CHECK(!panel.update(now + 149U, mask));
+        CHECK(panel.update(now + game::Random2DurationMs, mask));
+        CHECK(panel.lampInputMask() == 0);
+        CHECK(panel.phase() == game::PanelPhase::Ready);
+        CHECK(!panel.update(now + 5000U, mask)); // Holding never repeats.
+    }
+    game::PanelGames panel;
+    panel.select(game::PanelMode::Random2, 0, 0);
+    press(panel, 0, UINT32_MAX);
+    CHECK(panel.lampInputMask() == UINT32_MAX); // Chords welcome, no loss.
+}
+
+void testRandom2BeatsRetriggerAndRollover() {
+    game::PanelGames panel(randomBelow);
+    uint32_t now = UINT32_MAX - 60U;
+    panel.select(game::PanelMode::Random2, now, 0);
+    chosen = 1;
+    now = press(panel, now, 1);
+    CHECK(panel.takeFeedback() == game::PanelFeedback::Melody);
+    CHECK(panel.discoPixel(0) == 1);
+    chosen = 2;
+    CHECK(!panel.update(now + 149U, 1));
+    CHECK(panel.update(now + 150U, 1));
+    CHECK(panel.discoPixel(0) == 2 && panel.hue() == 2);
+    CHECK(panel.lampInputMask() == 1);
+    CHECK(panel.takeFeedback() == game::PanelFeedback::None); // Beat != new tune.
+    CHECK(panel.update(now + 1000U, 1)); // One bounded late frame.
+    CHECK(!panel.update(now + 1000U, 1));
+    now = press(panel, now + 1000U, 3); // New input replaces effect while playing.
+    CHECK(panel.lampInputMask() == 2);
+    CHECK(panel.takeFeedback() == game::PanelFeedback::Melody);
+    CHECK(panel.update(now + 1199U, 3)); // Still active, last delayed beat.
+    CHECK(panel.phase() == game::PanelPhase::Hit);
+    CHECK(panel.update(now + 1200U, 3));
+    CHECK(panel.phase() == game::PanelPhase::Ready);
+}
+
+void testRandom2BounceReselectAndCancel() {
+    game::PanelGames panel;
+    panel.select(game::PanelMode::Random2, 0, 1);
+    CHECK(!panel.update(100, 1));
+    uint32_t now = release(panel, 100);
+    CHECK(!panel.update(now + 1U, 1));
+    CHECK(!panel.update(now + 20U, 0));
+    CHECK(!panel.update(now + 21U, 1));
+    CHECK(!panel.update(now + 50U, 1));
+    now += 51U;
+    CHECK(panel.update(now, 1));
+    CHECK(panel.lampInputMask() == 1);
+    panel.select(game::PanelMode::Random2, now, 1);
+    CHECK(panel.lampInputMask() == 0);
+    CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+    CHECK(!panel.update(now + 1000U, 1));
+    now = release(panel, now + 1000U);
+    now = press(panel, now, 1);
+    panel.select(game::PanelMode::Disabled, now, 1);
+    CHECK(panel.lampInputMask() == 0);
+    CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+    CHECK(!panel.update(now + 5000U, 1));
+    panel.select(game::PanelMode::Random, now, 0);
+    press(panel, now, 1);
+    CHECK(panel.lampInputMask() == 0); // Original Random never drives GPIO lamps.
+}
+
+void testRandom2WorkbookPairs() {
+    for (uint8_t i = 0; i < game::PanelChannelCount; ++i)
+        CHECK(board::pairedStripPixel(board::panelInputPin(i)) == board::panelStripPixel(i));
+    for (const auto& pair : generated::pins::IkarusSwitches) {
+        const uint8_t input = generated::pins::pinNumber(pair.inputControl);
+        CHECK(board::pairedGpioLamp(input) == generated::pins::pinNumber(pair.ledControl));
+        CHECK(board::pairedStripPixel(input) == 0);
+    }
+    const uint8_t switches[] = {40, 42, 38, 36, 37};
+    for (uint8_t i = 0; i < 5; ++i) CHECK(board::pairedStripPixel(switches[i]) == 76 + i);
+    const uint8_t unpaired[] = {28, 47, 39, 25, 24, 53, 255};
+    for (uint8_t pin : unpaired) {
+        CHECK(board::pairedStripPixel(pin) == 0);
+        CHECK(board::pairedGpioLamp(pin) == generated::pins::InvalidPin);
+    }
+}
+
+debug::ButtonPinMode lampModes[board::GpioPinCount];
+bool lampHigh[board::GpioPinCount];
+unsigned lampWrites = 0;
+debug::ButtonPinMode readLampMode(uint8_t pin) { return lampModes[pin]; }
+bool readLampHigh(uint8_t pin) { return lampHigh[pin]; }
+void writeLamp(uint8_t pin, bool high) {
+    CHECK(debug::canTestDigitalOutput(pin));
+    lampModes[pin] = debug::ButtonPinMode::Output;
+    lampHigh[pin] = high;
+    ++lampWrites;
+}
+void restoreLamp(uint8_t pin, bool pullup) {
+    CHECK(lampHigh[pin] == debug::digitalOutputInactiveHigh(pin));
+    lampModes[pin] = pullup ? debug::ButtonPinMode::PullupInput : debug::ButtonPinMode::FloatingInput;
+    lampHigh[pin] = pullup;
+}
+void resetLamps() {
+    for (uint8_t pin = 0; pin < board::GpioPinCount; ++pin) {
+        lampModes[pin] = debug::ButtonPinMode::FloatingInput;
+        lampHigh[pin] = false;
+    }
+    lampWrites = 0;
+}
+
+void testPairedGpioLampsAndRestoration() {
+    resetLamps();
+    lampModes[16] = debug::ButtonPinMode::PullupInput;
+    lampHigh[16] = true;
+    game::PairedLampOutputs lamps(readLampMode, readLampHigh, writeLamp, restoreLamp);
+    const uint8_t inputs[] = {52, 50, 46, 48, 23, 51};
+    const uint8_t outputs[] = {2, 16, 17, 3, 18, 19};
+    lamps.draw(UINT32_MAX, inputs, 6);
+    CHECK(lampWrites == 0); // Disabled is inert.
+    lamps.setEnabled(true);
+    CHECK(lampWrites == 6);
+    lamps.setEnabled(true);
+    CHECK(lampWrites == 6);
+    for (uint8_t i = 0; i < 6; ++i) {
+        lamps.draw(uint32_t(1) << i, inputs, 6);
+        for (uint8_t j = 0; j < 6; ++j) CHECK(lampHigh[outputs[j]] == (i == j));
+    }
+    lamps.draw(0x3f, inputs, 6);
+    for (uint8_t pin : outputs) CHECK(lampHigh[pin]);
+    const unsigned writes = lampWrites;
+    lamps.draw(0x3f, inputs, 6);
+    CHECK(lampWrites == writes); // Disco frames don't toggle unchanged GPIO.
+    lamps.setEnabled(false); // Cancellation while all six lamps are lit.
+    for (uint8_t pin : outputs) {
+        CHECK(lampModes[pin] == (pin == 16 ? debug::ButtonPinMode::PullupInput :
+                                         debug::ButtonPinMode::FloatingInput));
+        CHECK(lampHigh[pin] == (pin == 16));
+    }
+    lamps.setEnabled(false);
+}
+
+void testPairedGpioPreservesOtherOwnersAndBounds() {
+    resetLamps();
+    lampModes[2] = debug::ButtonPinMode::Output;
+    lampHigh[2] = true; // Pre-existing output may not be borrowed.
+    game::PairedLampOutputs lamps(readLampMode, readLampHigh, writeLamp, restoreLamp);
+    lamps.setEnabled(true);
+    CHECK(lampWrites == 5 && lampHigh[2]);
+    const uint8_t inputs[] = {52, 50, 46, 48, 23, 51};
+    lamps.draw(0x3f, inputs, 6);
+    lampModes[16] = debug::ButtonPinMode::PullupInput; // Ownership changed.
+    lampHigh[17] = false; // Another writer changed its driven level.
+    lamps.draw(0x3f, inputs, 6);
+    CHECK(lampModes[16] == debug::ButtonPinMode::PullupInput);
+    CHECK(!lampHigh[17]);
+    lamps.draw(UINT32_MAX, nullptr, 255); // Null and excessive counts are bounded.
+    lamps.setEnabled(false);
+    CHECK(lampModes[2] == debug::ButtonPinMode::Output && lampHigh[2]);
+    CHECK(lampModes[16] == debug::ButtonPinMode::PullupInput);
+    CHECK(lampModes[17] == debug::ButtonPinMode::Output && !lampHigh[17]);
+    CHECK(lampModes[board::LedDataPin] == debug::ButtonPinMode::FloatingInput);
+    CHECK(lampModes[board::MenuButtonPin] == debug::ButtonPinMode::FloatingInput);
+    // Full 32-bit mask, including bit 31; never read inputs beyond the bound.
+    resetLamps();
+    uint8_t manyInputs[game::PanelInputCount];
+    for (uint8_t& pin : manyInputs) pin = 255;
+    manyInputs[31] = 51;
+    lamps.setEnabled(true);
+    lamps.draw(uint32_t(1) << 31, manyInputs, 255);
+    CHECK(lampHigh[19]);
+    lamps.setEnabled(false);
+}
+
 struct Test { const char* name; void (*run)(); };
 const Test Tests[] = {
+    {"Random2 all inputs, chords, duration and hold", testRandom2AllInputsAndChords},
+    {"Random2 disco beats, retrigger, delayed updates and rollover", testRandom2BeatsRetriggerAndRollover},
+    {"Random2 bounce, fresh selection and cancellation", testRandom2BounceReselectAndCancel},
+    {"Random2 corrected strip, metal and Ikarus pair mapping", testRandom2WorkbookPairs},
+    {"Random2 six GPIO lamps, chords and scoped restoration", testPairedGpioLampsAndRestoration},
+    {"Random2 GPIO ownership, reserved pins and bounds", testPairedGpioPreservesOtherOwnersAndBounds},
     {"Flasher single visible target without growing memory", testFlasherSingleTargetWithoutMemory},
     {"Flasher wrong button, chord, timeout and rollover", testFlasherLossTimeoutAndRollover},
     {"Flasher held playback, reselection and cancellation", testFlasherHeldInputsReselectionAndCancel},

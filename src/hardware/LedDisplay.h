@@ -11,6 +11,7 @@ void begin();
 void clear();
 void draw(const game::CycloneGame& game);
 void drawPanel(const game::PanelGames& game);
+void drawRandom2(const game::PanelGames& game, const uint8_t* inputs, uint8_t count);
 void drawTest(const debug::LedStripTester& test);
 
 } // namespace leds
