@@ -1,6 +1,6 @@
 # Gyerek_jatek
 
-Arduino Mega 2560 LED games (Cyclon, Random, Random 2, Simon mondja and Sima villogó / Flasher) with a 16x2 tcMenu LCD interface, buzzer feedback and live input diagnostics. Open [Gyerek_jatek.code-workspace](Gyerek_jatek.code-workspace); it contains only this project, not the unrelated Csiraztato project.
+Arduino Mega 2560 LED games (Cyclon, Random, Random 2, Sorrend, Sima villogó / Flasher, Kapcsolozar and Parbaj) with a 16x2 tcMenu LCD interface, buzzer feedback and live input diagnostics. Open [Gyerek_jatek.code-workspace](Gyerek_jatek.code-workspace); it contains only this project, not the unrelated Csiraztato project.
 
 Magyar nyelvű felhasználói útmutató: [HASZNALATI_UTMUTATO.md](HASZNALATI_UTMUTATO.md).
 
@@ -19,9 +19,10 @@ Workbook-driven configuration design and generated artifacts: [docs/EXCEL_CONFIG
 | [src/main.cpp](src/main.cpp) | Arduino setup/loop entry point |
 | [src/app/Application.cpp](src/app/Application.cpp) | Hardware initialization and two permanent 5 ms tasks: game/input and audio |
 | [src/app/ModeController.cpp](src/app/ModeController.cpp) | Cyclon/Debug engine control and one-shot result sounds; application owns game selection and menu scope |
-| [src/audio/SoundEffects.cpp](src/audio/SoundEffects.cpp) | Flash-backed, non-blocking win/loss and Random 2 melody patterns |
+| [src/audio/SoundEffects.cpp](src/audio/SoundEffects.cpp) | Flash-backed, non-blocking win/loss, warning and Random 2 melody patterns |
 | [src/game/CycloneGame.cpp](src/game/CycloneGame.cpp) | Portable game state machine, movement, hit windows, intro and feedback timers |
-| [src/game/PanelGames.cpp](src/game/PanelGames.cpp) | Portable Random/Random 2/Simon/Flasher state machines, debounce, timing and feedback |
+| [src/game/PanelGames.cpp](src/game/PanelGames.cpp) | Portable Random/Random 2/Sorrend/Flasher state machines, debounce, timing and feedback; basic Sorrend retains internal `Simon` naming |
+| [src/game/ChallengeGames.cpp](src/game/ChallengeGames.cpp) | Portable Kapcsolozar3/4 and Parbaj state machines; whole-vector debounce, preview, arbitration and feedback |
 | [src/game/PairedLampOutputs.cpp](src/game/PairedLampOutputs.cpp) | Portable scoped ownership and polarity-aware paired GPIO lamp output |
 | [src/hardware/GameLamps.cpp](src/hardware/GameLamps.cpp) | Mega GPIO adapter for Random 2 lamps; preserves other owners and restores prior input modes |
 | [src/config/PanelConfig.h](src/config/PanelConfig.h) | Eleven panel channels resolved through workbook lamp pairs and strip positions |
@@ -45,7 +46,7 @@ Workbook-driven configuration design and generated artifacts: [docs/EXCEL_CONFIG
 - The build regenerates [src/generated/pins.h](src/generated/pins.h) and [src/generated/game_config.h](src/generated/game_config.h) before the normal project checks run.
 - The generated headers are constexpr-only data tables intended for flash-friendly firmware consumption. They cover the exported pin catalog, per-game bindings, lamp pairs and 1-based strip positions (`PinDefinition::stripPixel`, 0 unspecified). Numeric `PinMap_export` column B (`Info`) values on WS2812B rows must be unique and in 1–100; descriptive/range text is skipped. Multi-contact GPIO cells retain each contact; the annotation in `25,24 (3 állású)` is not a third pin. The panel feature leaves the workbook unchanged.
 - Startup pull-ups follow safe workbook `DigitalIn` contacts, including the remapped game button and both contacts of a three-position switch. Unrelated GPIO and board-owned peripheral pins are not initialized as buttons.
-- The long-term sheet layout for multi-game and per-level gameplay settings is documented in [docs/EXCEL_CONFIG_ARCHITECTURE.md](docs/EXCEL_CONFIG_ARCHITECTURE.md). The current firmware still keeps Cyclon timing constants in source until the workbook gains the dedicated level-definition sheet described there.
+- The long-term sheet layout is documented in [docs/EXCEL_CONFIG_ARCHITECTURE.md](docs/EXCEL_CONFIG_ARCHITECTURE.md). Corrected `GameLevel` rules are implemented manually in source; **the generator still ignores that sheet**. Editing it alone does not change gameplay. The proposed normalized `GameLevels` schema remains a future migration.
 
 ## Wiring
 
@@ -83,21 +84,44 @@ Each Ikarus unit has a switch contact and a built-in light. They are **two separ
 | 5 | `BTN20_ikarus_5` / D23 | `DIO05_ikarus_5` / D18 |
 | 6 | `BTN21_ikarus_6` / D51 | `DIO06_ikarus_6` / D19 |
 
-The generator emits `generated::pins::IkarusSwitches` and **22** `generated::pins::LampPairs` associations. Hyphenated button/switch and lamp IDs pair by their suffix, not prefix number: `BTN01-left-blue_1` ↔ `LED01-left-blue_1`, `SW01-metal_1` ↔ `LED05-metal_1`. The workbook's `down-5_N` ↔ `strip-down5_N` spelling is normalized explicitly. Legacy underscore Ikarus IDs remain supported. **Random 2 explicitly lights the pressed Ikarus switch's paired lamp**; the original Random still chooses a random panel lamp and Debug never automatically follows switch presses. Cyclon gameplay is unchanged.
+The generator emits `generated::pins::IkarusSwitches` and **22** `generated::pins::LampPairs` associations. Hyphenated button/switch and lamp IDs pair by their suffix, not prefix number: `BTN01-left-blue_1` ↔ `LED01-left-blue_1`, `SW01-metal_1` ↔ `LED05-metal_1`. The workbook's `down-5_N` ↔ `strip-down5_N` spelling is normalized explicitly. Legacy underscore Ikarus IDs remain supported. **Random 2 explicitly lights the pressed Ikarus switch's paired lamp**; the original Random still chooses a random panel lamp and Debug never automatically follows switch presses. Pair metadata does not alter Cyclon's controls or 75-pixel layout; its new profiles are documented below.
 
 The workbook's `ActiveLevel` is exported in each pin definition: `HIGH` / `LOW` describe a transistor lamp's active GPIO level; `WS2812B` identifies strip data, never a directly switchable lamp output. Blank means unspecified and is excluded from manual GPIO output testing. All six current transistor lamps are **HIGH = ON, LOW = OFF**. Pair identity does not change their electrical independence or the 75-pixel Cyclon layout.
 
 The generator rejects missing/duplicate lamp pairs, incorrect input/output types, invalid active levels, and transistor outputs overlapping UART, board-owned pins, input contacts or another lamp output. D4 is reserved for the strip; D2 is available for Ikarus LED #1. ActiveLevel describes polarity, not lamp voltage/current ratings or driver suitability: verify these and provide appropriate current limiting/driver hardware before connecting a lamp.
 
-## Behavior
+## GameLevel implementation — 2026-10-20
 
-- Root options are **Szint1**, **Szint2**, **Szint3**, **Szint4**, **Szint5**, **Ujrainditas**, **Debug**. Szint1 offers **Random**, then **Random 2**; Szint2 offers **Cyclon**, **Simon mondja**, then **Sima villogo** (ASCII LCD label; Hungarian: Sima villogó, internal mode `Flasher`). Szint3–5 are deliberately reserved with Back only, as requested. Root levels are not Cyclon's four internal difficulties.
+The earlier documentation-only review is **historical and superseded by implementation**: Cyclon menu-level profiles and white-target memory Sorrend2–5 now follow the corrected rules. Kapcsolozar3/4 and Parbaj are also implemented. The workbook `GameLevel` sheet remains a human-readable specification, **not automatically imported configuration**; see [implemented rules and explicit source choices](docs/EXCEL_CONFIG_ARCHITECTURE.md#implemented-gamelevel-rules-2026-10-20).
+
+Implementation and validation evidence is recorded below separately from historical verification. The workbook and user-owned handoff remain unchanged; the handoff may describe an older revision. No firmware was uploaded.
+
+## Behavior (current firmware)
+
+- Root options are **Szint1**, **Szint2**, **Szint3**, **Szint4**, **Szint5**, **Ujrainditas**, **Debug**. Every level has Back; root levels are not Cyclon's four internal difficulties. Menu order and action IDs:
+
+	| Level | Games in order (menu IDs) |
+	| --- | --- |
+	| Szint1 | Random (35), Random 2 (38), unchanged |
+	| Szint2 | Cyclon (10), Sorrend (36), Sima villogo (37), unchanged placement; ASCII LCD label, mode `Flasher` |
+	| Szint3 | Cyclon (42), Sorrend (39), Kapcsolozar (45), Parbaj (47) |
+	| Szint4 | Cyclon (43), Sorrend (40), Kapcsolozar (46) |
+	| Szint5 | Cyclon (44), Sorrend (41) |
 - Boot selects **no game** and leaves the strip dark. Manually leaving a game's owning level submenu (Back/root or another menu), entering Debug or choosing Ujrainditas cancels the game, tone and all **100** buffered LEDs and restores the normal **120-second** menu/Debug timeout. Returning from Debug does not resume or select a game.
-- Selecting **any game (Cyclon, Random, Random 2, Simon or Flasher)** disables tcMenu's automatic return entirely via `renderer.turnOffResetLogic()`. This remains disabled during ready, gameplay and result states, including after completion/failure: the game stays selected with **no menu timeout** until manually cancelled. Simon's and Flasher's **10-second input inactivity timeouts** are gameplay logic, not menu cancellation; the LED Debug screen retains its own **120-second** timer.
+- Selecting **any game** disables tcMenu's automatic return via `renderer.turnOffResetLogic()` during Ready, gameplay and results, including after completion/failure. The game stays selected with **no menu timeout** until manually cancelled. Flasher's **10-second input timeout**, Sorrend3–5's per-answer deadlines and Kapcsolozar4's deadline are gameplay logic, not menu cancellation; the LED Debug screen retains its own **120-second** timer.
 - **Random:** every safe configured digital input/switch contact, including Cyclon D39 and Ikarus contacts but excluding menu/peripheral pins, accepts fresh debounced presses. Each press chooses one of the **11 panel lamps**, a random hue and a **220–1760 Hz tone for 250 ms**. It does not light the pressed switch's matching Ikarus lamp. Re-selecting Random resets it.
 - **Random 2:** accepts the same safe contacts, but lights the **pressed input's own paired lamp** for **1,200 ms**, including all six Ikarus GPIO lamps and SW01–05 strip pixels 76–80. Panel inputs retain the corrected mapping below. Simultaneous fresh presses light their respective lamps together. Unpaired BTN05/BTN06/BTN15 (D39) and SW06 contacts still start the sound/disco, without inventing a lamp association. Each fresh press starts/restarts a tiny original **eight-beat, 150 ms/beat melody** (seven notes plus a silent beat; **32-byte flash table**, not the full Greensleeves player) and **three random colored pixels on positions 1–70**, refreshed every 150 ms. A new press replaces the previous effect; held/bouncing contacts do not repeat. Completion goes dark but leaves the game selected indefinitely. Selection/reselection requires fresh presses. Back, another game, Debug or restart immediately stops audio, clears all 100 strip pixels and releases owned GPIO lamps at their inactive polarity, restoring their previous input/pull-up modes. Existing outputs are never borrowed; if another owner changes a pin's mode/level, Random 2 relinquishes it without overwriting that owner. There is no extra task or LED buffer; the workbook is unchanged.
-- **Simon mondja:** selection waits for a fresh press of any of the 11 panel buttons; that start press is consumed, not checked as an answer. A random sequence grows from **1 to 32** steps. Playback has a **500 ms initial pause**, **500 ms lights** and **200 ms gaps**. Held playback inputs are ignored and must be released before answering. Repeat the sequence with the same buttons. Every correct press gives **540 ms green feedback** plus Cyclon's rising Win chime; wrong input, a chord or **10 seconds without an input** gives **740 ms red feedback** plus Cyclon's Loss sound. Completion at 32 or failure returns to Ready for a fresh start press. Re-selecting Simon resets the sequence.
-- **Sima villogó (Szint2, LCD: Sima villogo, mode `Flasher`):** uses the same 11 panel inputs and corrected lamp mapping as Simon. A fresh press of any panel button starts and is consumed, not checked as an answer; release after playback is required as in Simon. After a **500 ms initial pause**, one random target lights for **500 ms**, goes dark for **200 ms**, then reappears and **remains visible while awaiting its matching button**. This is not a memory game. A correct press gives **540 ms green feedback** and the same Win chime, then a new single target is chosen. Rounds are unlimited: no accumulated sequence and no 32-step completion. Wrong input, a chord or **10 seconds of input inactivity** gives **740 ms red feedback** and the same Loss sound, then Ready waits for a fresh start press. Re-selection resets Flasher. Simon's growing sequence and rules are unchanged.
+- **Sorrend (every Szint2–5):** white-target **memory game**, growing from **1 to 32 steps**; former user-facing name Simon mondja, internal `Simon` / `playSimon` retained. Selection waits for a fresh any-panel-button start, consumed rather than answered; reselection resets. Preserve **500 ms initial pause, 500 ms Showing, 200 ms gaps**, and release gating for playback-held inputs. Repeat the hidden sequence on the same 11 mapped buttons. Each correct answer gives **540 ms green/Win**; the next Input entry starts a fresh per-answer timer. Finishing a sequence appends one step, except completion at32 returns Ready. Wrong button/chord/deadline gives **740 ms red/Loss**, then Ready for a fresh start; deadline wins at the boundary.
+
+	| Menu level | Additional saturated-colored distractors | Per-answer Input deadline | Warning at remaining time |
+	| --- | --- | --- | --- |
+	| 2 | None | Unlimited | None |
+	| 3 | 4–6 | 3000 ms | 2 / 1 seconds |
+	| 4 | 4–10 | 2000 ms | 1 / 0.5 seconds |
+	| 5 | 8–10 | 1200 ms | 1 / 0.5 seconds |
+
+	Distractors occupy distinct channels excluding that step's white target. **Implementation choice (workbook unspecified):** refresh positions/colors per shown step, keep them fixed within that Showing, show distractors only in Showing. **Neither target nor distractors is visible in Input**; gaps are dark. Warning is **80 ms/880 Hz**, once per threshold while awaiting the answer, not a deadline extension. This replaces the old nonmemory Sorrend4/5 behavior.
+- **Sima villogó (Szint2, LCD: Sima villogo, mode `Flasher`):** unchanged nonmemory game on the same 11 mapped inputs. A fresh any-panel start is consumed; release after playback is required. After **500 ms initial pause**, one random target lights for **500 ms**, goes dark for **200 ms**, then reappears and **stays visible awaiting its button**. Correct gives **540 ms green/Win**, then a new single target; unlimited rounds, no growing sequence or32-step completion. Wrong/chord/**10 seconds input inactivity** gives **740 ms red/Loss**, then Ready for a fresh start. Reselection resets.
 - Workbook `Info` and `LampPairs` are exported unchanged. The panel adapter corrects the lower row's physically reversed strip direction: **BTN07–11 → 75, 74, 73, 72, 71**. Input order and both upper groups remain unchanged:
 
 	| Buttons | 1-based strip pixels |
@@ -108,22 +132,44 @@ The generator rejects missing/duplicate lamp pairs, incorrect input/output types
 
 	All lamps need a physical strip of **at least 86 pixels**, even though Cyclon uses only 75.
 
-### Cyclon (Szint2)
+### Cyclon (Szint2–5)
 
 - Selecting Cyclon waits for a fresh **D39** press at its ready screen. The non-blocking intro wipe is unchanged (500 ms pause, 70 x 40 ms game pixels, 5 x 100 ms score pixels).
 - A held button is never reused to stop a level, restart after a loss, or start a game on boot. Release it before pressing again.
-- Level speeds are 50, 40, 35 and 20 ms per pixel; the task polls every 5 ms rather than imposing the old 50 ms limit. Actual timing can have small scheduling and LED-transmission jitter.
-- Level 1 accepts the five-pixel target window, level 2 accepts three pixels, and levels 3/4 accept only the centre. The checked position is the displayed LED, not the next index.
+- Each selected menu-level profile has four successive internal stages. Values below are ordered stages1/2/3/4; polling remains5 ms and hardware scheduling/LED-transmission jitter is possible.
+
+	| Menu level | Intervals (ms per LED) | Accepted widths (LEDs) |
+	| --- | --- | --- |
+	| 2 | 50 / 40 / 40 / 40 | 9 / 5 / 5 / 3 |
+	| 3 | 40 / 35 / 30 / 30 | 9 / 5 / 5 / 3 |
+	| 4 | 50 / 40 / 35 / 20 | 5 / 3 / 2 / 2 |
+	| 5 | 40 / 35 / 30 / 20 | 5 / 3 / 2 / 1 |
+
+	Odd widths are centred; **width2 is centre and centre+1**, not ±1. The displayed LED is checked, not the next index. Reselection resets the selected profile to Ready. See [exact offsets](docs/EXCEL_CONFIG_ARCHITECTURE.md#implemented-cyclon-profiles).
 - Wins/losses flash green/red three times, 500 ms on and 500 ms off, without delaying menu or application dispatch. Winning advances to the next level; finishing level 4 or losing returns to idle.
 - Each win plays a short rising chime (523, 659, 784 Hz; about 0.54 seconds); each loss plays a descending sound (392, 294, 196 Hz; about 0.74 seconds). Each result starts its sound **once**, alongside the LED flashes, not once per flash or while a button is held.
 - Four score LEDs indicate the current difficulty level; the fifth lights during final-victory feedback. All five are cleared on the next start.
 - **Ujrainditas** clears the selected game, sound and all strip pixels; select a game again to play.
 - **Debug** stops the current game and sound while any of its nested views is open, so testing D39 cannot start/stop a round. Returning to root leaves no game selected and the strip dark; there is no automatic resume.
-- **When no game is selected**, level submenus, Debug and nested lists automatically return to the main menu after **120 seconds without joystick/menu-button interaction**. Change `MenuIdleTimeoutSeconds` in [src/config/BoardConfig.h](src/config/BoardConfig.h); [src/app/Application.cpp](src/app/Application.cpp) applies it after menu setup and restores it on game cancellation, overriding tcMenu's default 30-second interval. Tested game-button presses and live input refreshes do not extend this normal menu/Debug timeout. **Selected games have no automatic return**, even while ready or after results. This is separate from Simon's and Flasher's 10-second input inactivity timeouts, the LED test's own 120-second timer and the 25 ms I2C bus timeout.
-- JatekValaszto, Input naplo, the old test placeholders and Greensleeves selection are removed; the requested Back-only Szint3–5 menus are intentional. The standalone [src/music/MusicPlayer.cpp](src/music/MusicPlayer.cpp) and [src/music/Melody.cpp](src/music/Melody.cpp) modules remain for future reuse/tests but are not referenced by the active firmware application.
+- **When no game is selected**, level submenus, Debug and nested lists return to root after **120 seconds without joystick/menu-button interaction**. `MenuIdleTimeoutSeconds` in [src/config/BoardConfig.h](src/config/BoardConfig.h) is applied/restored by [src/app/Application.cpp](src/app/Application.cpp), overriding tcMenu's30-second default. Tested buttons/live refresh do not extend it. Selected games never auto-return; gameplay deadlines, LED test timeout and25 ms I2C timeout are independent.
+- JatekValaszto, Input naplo, old placeholders and Greensleeves selection remain removed. Standalone [src/music/MusicPlayer.cpp](src/music/MusicPlayer.cpp) and [src/music/Melody.cpp](src/music/Melody.cpp) remain for reuse/tests, not active firmware features.
 - Diagnostics are intentionally volatile; no EEPROM addresses are assigned or written.
 
-All application timers use unsigned elapsed-time subtraction for millis rollover. Button sampling, music notes, diagnostic formatting and LED rendering do not allocate Arduino String objects. The frameworks may still allocate their own menu/task storage.
+### Kapcsolozar (Szint3/4; LCD: Kapcsolozar)
+
+- Portable engine: [src/game/ChallengeGames.cpp](src/game/ChallengeGames.cpp). **Selection starts the first round immediately; reselection resets/autostarts**, unlike Sorrend/Cyclon. Five literal GPIO HIGH bits are read in SW01–05 order: **D40, D42, D38, D36, D37**; paired white strip lamps are **76–80**. HIGH is not converted to active-LOW button logic. **Physical HIGH=up is an assumption to verify on hardware**, not a proven wiring fact.
+- **Szint3:** lit lamp requires HIGH, dark lamp LOW, unlimited response time. **Szint4:** inverse (lit→LOW, dark→HIGH), **2000 ms from round start**, deadline wins even if the last switch stabilizes at that instant. Warning at1/0.5 seconds remaining, using80 ms/880 Hz.
+- A random displayed five-bit mask excludes the combination already solved by the sampled switch vector (inverse mapping on level4), so selection cannot instantly win. **All five actual HIGH/LOW levels together must match and remain stable for30 ms**; a fresh mismatch invalidates the match immediately. This is not five independent press events.
+- Win: **540 ms green/Win**; timeout: **740 ms red/Loss**, then Ready. A **fresh D39 press** starts the next independent round; held inputs/results do not restart it. Cancelling stops audio and clears all100 pixels.
+
+### Parbaj (Szint3; LCD: Parbaj)
+
+- Selection/reselection immediately starts a **2000 ms preview** on six upper buttons: left BTN01–03 = channels0–2, right BTN12–14 = channels8–10. Each side has three distinct colors from hue palette **0,32,64,96,160**, with **exactly one common color**. Warning at1/0.5 seconds remaining.
+- After preview the common color appears on **bottom-middle BTN09 lamp, channel5, pixel73**; it is a cue, not an answer button. The six upper colors remain lit. **No response deadline.** Preview presses are ignored; all upper inputs must be released stably before fresh answers are accepted.
+- First accepted upper-side answer resolves the round: correct wins/other side red; wrong loses/other side green. A same-side chord is wrong, even if it contains the common-color button. Answers accepted in the same update: both correct→both green/draw; both wrong→both red/draw; mixed→correct side green/wrong side red.
+- Three **90 ms on/90 ms off** result blinks (**540 ms total**). Win audio once if any accepted answer is correct; Loss once otherwise (stopped at result completion, including the normally longer Loss pattern). Ready then needs a **fresh upper-button press** to start another preview; held/partially debounced result presses do not restart. D39 and bottom buttons are not Parbaj answers/restart controls.
+
+All games reuse the existing two cooperative application tasks and the single100-pixel buffer. Manual Back/owning-level exit, another game, Debug or restart stops old warnings/results/audio and clears all100 pixels; no automatic resume. All application timers use unsigned elapsed-time subtraction for millis rollover. Runtime paths do not allocate Arduino `String` objects; frameworks may allocate their own menu/task storage.
 
 ## Predictable menu navigation
 
@@ -163,7 +209,7 @@ The existing 5 ms task samples at most four digital pins and one analog channel 
 
 The Mega uses **TaskManagerIO cooperative scheduling**, not OS threads or a new RTOS. The game/input task and audio task are registered once at startup; both have separate 5 ms update intervals in [src/config/BoardConfig.h](src/config/BoardConfig.h). The LCD/input framework has its own scheduled work. A task callback does a small amount of work and returns; no task waits for a note or an animation to finish. Arduino's timer-backed tone function generates the actual buzzer waveform asynchronously.
 
-The game task detects entry into win/loss feedback and requests a sound; Simon and Flasher reuse Cyclon's Win/Loss patterns. Random 2 requests its short Playful pattern on a fresh press, not on each disco frame. The audio task advances effects independently of LED animation and services Random's short tone. Leaving the owning level, Debug and restart cancel unfinished effects; no standalone music source is selectable. New modes use the same two application tasks. If the task queue is full, each failed task has its own main-loop fallback rather than retrying allocation from menu callbacks.
+The game task requests one-shot feedback; Sorrend, Flasher, Kapcsolozar and Parbaj reuse Cyclon's Win/Loss patterns. Sorrend3–5 request Warning at their per-answer thresholds; Kapcsolozar4/Parbaj at their2-second deadline/preview thresholds. Random2 requests Playful on a fresh press, not each disco frame. The audio task advances effects and Random's short tone independently. Cancellation/result completion stops unfinished effects. No standalone music source is selectable. All modes use the same two tasks; failed scheduling has per-task main-loop fallback, not callback allocation retries.
 
 Customize pitches, note lengths and silent gaps in the WinPattern and LossPattern tables in [src/audio/SoundEffects.cpp](src/audio/SoundEffects.cpp). They live in AVR flash and use no dynamic allocation. Late audio updates skip expired notes; feedback completion also cancels stale audio so it cannot carry into the next level.
 
@@ -177,9 +223,13 @@ Use **Terminal > Run Build Task** for **Build Gyerek_jatek (Mega)**. The VS Code
 
 The runner uses Python's standard unittest for project/configuration checks and compiles the actual portable C++ modules for native regression tests. No Mega, serial port or upload is involved. It locates g++/clang++/Zig on PATH, or the optional pinned Zig package in the current Python or PlatformIO Python environment. If no native compiler is installed, install the package specified in [tools/requirements-test.txt](tools/requirements-test.txt) into a Python environment, or provide a C++ compiler. The runner also accepts a sanitizer flag when the native compiler supports undefined-behavior instrumentation. Every PlatformIO build also runs the read-only project/configuration checks through [tools/check_build.py](tools/check_build.py); this preflight requires no native compiler.
 
-Existing regression coverage includes bouncing/held/boot buttons, Cyclon positions, target boundaries, all four speeds, score pixels, intro/feedback timing and rollover, audio patterns/gaps/cancellation, LCD clipping, joystick repeats, digital/analog diagnostics, reserved/output protection, scoped pull-ups, digital-output selection/reset, task fallback and I2C status. Workbook cases cover multi-contact parsing, suffix-based pairing and reserved/shared-pin rejection; LED-test cases cover lengths 1–100, manual stepping/wraparound, cancellation, LCD numbering and timeout. Standalone melody/player tests remain for future reuse. Project checks reflect the new seven-option root and matching designer definition, while retaining LED-test/debug wiring, one strip controller, fixed diagnostic rows, scoped pull-ups and exactly two permanent application tasks. Panel/mapping/menu checks are included in the latest passing full suite.
+Regression coverage includes debounce/held inputs, Cyclon profiles and asymmetric boundaries, growing white-target Sorrend, distractor bounds/visibility, per-answer deadlines/warnings, Kapcsolozar whole-vector matching/inversion and Parbaj palette/cue/arbitration/release gating, plus timing/rollover/cancellation. Existing audio, LCD, navigation, diagnostics, ownership, workbook and LED-test checks remain. Project checks retain matching menu/designer IDs/action callbacks, one strip controller and exactly two permanent application tasks. Native tests do not certify physical wiring or timing.
 
-**2026-10-19 verification status:** Random 2 Mega build and the full normal and undefined-behavior-sanitized suites passed: **126 native tests and 33 Python checks**. Static SRAM: **4,123 / 8,192 bytes**; flash: **62,336 / 253,952 bytes**. New regression cases cover all 32 logical inputs, chords, debounce/hold/retrigger/reselection/cancellation, disco timing and rollover, corrected panel/metal/Ikarus pairs, GPIO ownership/restoration/bounds, and melody timing/replacement/cancellation. Random 2 and the preserved lower-row correction have not been verified on hardware in this session; **no firmware was uploaded**. Historical upload terminal output does not validate this change.
+**Historical Random 2 verification, 2026-10-19 (before Sorrend update):** Mega build and the full normal and undefined-behavior-sanitized suites passed: **126 native tests and 33 Python checks**. Static SRAM: **4,123 / 8,192 bytes**; flash: **62,336 / 253,952 bytes**. Those regression cases cover all 32 logical inputs, chords, debounce/hold/retrigger/reselection/cancellation, disco timing and rollover, corrected panel/metal/Ikarus pairs, GPIO ownership/restoration/bounds, and melody timing/replacement/cancellation. This is not full-suite evidence for the later Sorrend revision.
+
+**Historical Sorrend update, 2026-10-19:** Mega build and full normal/undefined-behavior-sanitized suites passed: **135 native tests and34 Python checks**, static SRAM **4,168 /8,192 bytes**, flash **63,386 /253,952 bytes**. These figures/results predate the corrected profiles/new games and are not current evidence.
+
+**Current implementation session, 2026-10-20:** full normal and undefined-behavior-sanitized suites passed: **157 native tests and 36 Python checks** each. Mega build successful: static SRAM **4,356 / 8,192 bytes**, flash **67,936 / 253,952 bytes**. Static SRAM excludes runtime stack/heap. No upload or hardware verification for this revision; corrected profiles, new games, Random2 and the lower-row correction need device acceptance. Historical upload output does not validate this revision. The workbook and user-owned [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) are unchanged.
 
 Native tests cannot verify real FastLED interrupt behavior, I2C communication, supply capacity or buzzer timing. Run those checks on the actual hardware before deployment.
 

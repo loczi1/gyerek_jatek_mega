@@ -45,7 +45,8 @@ game::CycloneGame cyclone(pickTarget);
 audio::SoundEffects soundEffects(playTone, stopTone);
 app::ModeController controller(cyclone, soundEffects);
 game::PanelGames panel(pickBelow);
-enum class SelectedGame : uint8_t { None, Cyclone, Random, Simon, Flasher, Random2, Sorrend4, Sorrend5 };
+game::ChallengeGames challenge(pickBelow);
+enum class SelectedGame : uint8_t { None, Cyclone, Random, Simon, Flasher, Random2, Sorrend4, Sorrend5, Challenge };
 SelectedGame selectedGame = SelectedGame::None;
 MenuItem* gameScope = nullptr;
 uint8_t panelInputs[game::PanelInputCount];
@@ -95,8 +96,23 @@ uint32_t panelPressedMask() {
     return mask;
 }
 
+uint8_t switchHighMask() {
+    uint8_t mask = 0;
+    for (uint8_t i = 0; i < 5; ++i) {
+        const uint8_t pin = generated::pins::pinNumber(board::MetalControls[i]);
+        if (!debug::canTestButton(pin)) continue;
+        const uint8_t port = digitalPinToPort(pin);
+        if (port == NOT_A_PIN) continue;
+        const uint8_t bit = digitalPinToBitMask(pin);
+        if ((*portModeRegister(port) & bit) == 0 && (*portInputRegister(port) & bit) != 0)
+            mask |= uint8_t(1) << i;
+    }
+    return mask;
+}
+
 void stopGames(uint32_t now) {
     gameLamps::setEnabled(false);
+    challenge.select(game::ChallengeMode::Disabled, now);
     panel.select(game::PanelMode::Disabled, now, 0);
     controller.select(app::Mode::Debug, now, gameButtonPressed());
     soundEffects.stop();
@@ -138,7 +154,9 @@ void renderLedTest(unsigned int, RenderPressMode) {
 }
 
 void drawMode() {
-    if (selectedGame == SelectedGame::Random2) {
+    if (selectedGame == SelectedGame::Challenge) {
+        leds::drawChallenge(challenge, millis());
+    } else if (selectedGame == SelectedGame::Random2) {
         gameLamps::draw(panel.lampInputMask(), panelInputs, panelInputCount);
         leds::drawRandom2(panel, panelInputs, panelInputCount);
     } else if (selectedGame == SelectedGame::Random || selectedGame == SelectedGame::Simon ||
@@ -196,6 +214,17 @@ void update() {
     if (diagnostics::updateButtons(now)) menuButtonDebug.setChanged(true);
     if (selectedGame == SelectedGame::Cyclone) {
         if (controller.update(now, gameButtonPressed())) leds::draw(cyclone);
+    } else if (selectedGame == SelectedGame::Challenge) {
+        if (challenge.update(now, switchHighMask(), gameButtonPressed(),
+                             static_cast<uint16_t>(panelPressedMask()))) {
+            const auto feedback = challenge.takeFeedback();
+            if (feedback != game::PanelFeedback::None)
+                soundEffects.play(feedback == game::PanelFeedback::Warning ? audio::Effect::Warning :
+                    (feedback == game::PanelFeedback::Win ? audio::Effect::Win : audio::Effect::Loss), now);
+            else if (challenge.phase() == game::PanelPhase::Ready)
+                soundEffects.stop();
+            drawMode();
+        }
     } else if (selectedGame == SelectedGame::Random || selectedGame == SelectedGame::Simon ||
                selectedGame == SelectedGame::Flasher || selectedGame == SelectedGame::Random2 ||
                selectedGame == SelectedGame::Sorrend4 || selectedGame == SelectedGame::Sorrend5) {
@@ -224,7 +253,7 @@ void update() {
 }
 
 void updateAudio() {
-    if (selectedGame == SelectedGame::Simon || selectedGame == SelectedGame::Flasher ||
+    if (selectedGame == SelectedGame::Challenge || selectedGame == SelectedGame::Simon || selectedGame == SelectedGame::Flasher ||
         selectedGame == SelectedGame::Random2 || selectedGame == SelectedGame::Sorrend4 ||
         selectedGame == SelectedGame::Sorrend5)
         soundEffects.update(millis());
@@ -268,19 +297,45 @@ void run() {
     if (initialized && audioTask == TASKMGR_INVALIDID) updateAudio();
 }
 
-void playGame() {
+void selectCyclon(uint8_t level, MenuItem* scope) {
     if (!initialized) return;
     finishLedTest(false);
     diagnostics::setButtonTestEnabled(false, millis());
     diagnostics::setDigitalOutputTestEnabled(false);
     stopGames(millis());
+    controller.selectCycloneLevel(level);
     selectedGame = SelectedGame::Cyclone;
-    gameScope = &menuBackLevel2;
+    gameScope = scope;
     renderer.turnOffResetLogic();
     renderer.menuAltered();
     if (controller.select(app::Mode::Cyclone, millis(), gameButtonPressed()))
         drawMode();
 }
+
+void playGame() { selectCyclon(2, &menuBackLevel2); }
+void playCyclon3() { selectCyclon(3, &menuBackLevel3); }
+void playCyclon4() { selectCyclon(4, &menuBackLevel4); }
+void playCyclon5() { selectCyclon(5, &menuBackLevel5); }
+
+void selectChallenge(game::ChallengeMode mode, MenuItem* scope) {
+    if (!initialized) return;
+    finishLedTest(false);
+    const uint32_t now = millis();
+    diagnostics::setButtonTestEnabled(false, now);
+    diagnostics::setDigitalOutputTestEnabled(false);
+    stopGames(now);
+    selectedGame = SelectedGame::Challenge;
+    gameScope = scope;
+    renderer.turnOffResetLogic();
+    renderer.menuAltered();
+    challenge.select(mode, now, switchHighMask(), gameButtonPressed(),
+                     static_cast<uint16_t>(panelPressedMask()));
+    drawMode();
+}
+
+void playLock3() { selectChallenge(game::ChallengeMode::Lock3, &menuBackLevel3); }
+void playLock4() { selectChallenge(game::ChallengeMode::Lock4, &menuBackLevel4); }
+void playDuel() { selectChallenge(game::ChallengeMode::Duel, &menuBackLevel3); }
 
 void selectPanelGame(SelectedGame selection, game::PanelMode mode, MenuItem* scope) {
     if (!initialized) return;
@@ -311,7 +366,7 @@ void playSimon() {
 }
 
 void playSorrend3() {
-    selectPanelGame(SelectedGame::Simon, game::PanelMode::Simon, &menuBackLevel3);
+    selectPanelGame(SelectedGame::Simon, game::PanelMode::Sorrend3, &menuBackLevel3);
 }
 
 void playSorrend4() {
@@ -368,6 +423,8 @@ void refreshDiagnostics() {
         snprintf(status, sizeof(status), "LED teszt");
     } else if (debugViewing) {
         snprintf(status, sizeof(status), "Debug");
+    } else if (selectedGame == SelectedGame::Challenge) {
+        snprintf(status, sizeof(status), "%s", challenge.mode() == game::ChallengeMode::Duel ? "Parbaj" : "Kapcsolozar");
     } else if (selectedGame == SelectedGame::Random) {
         snprintf(status, sizeof(status), "Random");
     } else if (selectedGame == SelectedGame::Random2) {

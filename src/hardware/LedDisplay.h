@@ -4,6 +4,7 @@
 #include "game/CycloneGame.h"
 #include "debug/LedStripTester.h"
 #include "game/PanelGames.h"
+#include "game/ChallengeGames.h"
 
 namespace leds {
 
@@ -11,6 +12,7 @@ void begin();
 void clear();
 void draw(const game::CycloneGame& game);
 void drawPanel(const game::PanelGames& game);
+void drawChallenge(const game::ChallengeGames& game, uint32_t now);
 void drawRandom2(const game::PanelGames& game, const uint8_t* inputs, uint8_t count);
 void drawTest(const debug::LedStripTester& test);
 

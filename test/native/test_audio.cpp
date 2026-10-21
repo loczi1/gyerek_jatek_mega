@@ -3,6 +3,7 @@
 #include "game/PanelGames.h"
 #include "app/ModeController.h"
 #include "music/MusicPlayer.h"
+#include <initializer_list>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -363,9 +364,58 @@ void testNoSelectionAndNullOutputAreSafe() {
     CHECK(!silent.isPlaying());
 }
 
+void testWarningDurationAndRollover() {
+    for (uint32_t now : {100U, UINT32_MAX - 40U}) {
+        const size_t first = eventCount;
+        audio::SoundEffects effects(playTone, stopTone);
+        effects.play(audio::Effect::Warning, now);
+        CHECK(effects.isPlaying() && effects.currentEffect() == audio::Effect::Warning);
+        CHECK(events[first].frequency == 880 && events[first].durationMs == 80);
+        effects.update(now);
+        effects.update(now + 79U);
+        CHECK(effects.isPlaying() && eventCount == first + 1U);
+        effects.update(now + 80U);
+        CHECK(!effects.isPlaying() && effects.currentEffect() == audio::Effect::None);
+        CHECK(eventCount == first + 2U && events[first + 1U].frequency == 0);
+        effects.update(now + 10000U);
+        effects.stop();
+        CHECK(eventCount == first + 2U);
+    }
+    CHECK(tones == 2 && stops == 2);
+}
+
+void testWarningCancellationReplacementAndLateUpdate() {
+    audio::SoundEffects effects(playTone, stopTone);
+    effects.play(audio::Effect::Warning, 0);
+    effects.stop();
+    CHECK(!effects.isPlaying() && tones == 1 && stops == 1);
+    effects.update(80);
+    effects.stop();
+    CHECK(eventCount == 2);
+    effects.play(audio::Effect::Warning, 100);
+    effects.play(audio::Effect::Win, 120);
+    CHECK(events[3].frequency == 0 && events[4].frequency == 523);
+    CHECK(effects.currentEffect() == audio::Effect::Win);
+    effects.play(audio::Effect::Warning, 130);
+    CHECK(events[5].frequency == 0);
+    CHECK(events[6].frequency == 880 && events[6].durationMs == 80);
+    effects.update(10000); // Never replay an expired warning.
+    CHECK(!effects.isPlaying() && tones == 4 && stops == 4);
+    effects.update(20000);
+    CHECK(eventCount == 8);
+    audio::SoundEffects silent;
+    silent.play(audio::Effect::Warning, UINT32_MAX - 20U);
+    silent.update(58);
+    CHECK(silent.isPlaying());
+    silent.update(59);
+    CHECK(!silent.isPlaying());
+}
+
 struct Test { const char* name; void (*run)(); };
 
 const Test Tests[] = {
+    {"Sorrend5 880Hz warning, exact 80ms duration and rollover", testWarningDurationAndRollover},
+    {"Sorrend5 warning cancellation, replacement and late updates", testWarningCancellationReplacementAndLateUpdate},
     {"Random2 playful melody beats and rollover", testPlayfulMelodyBeatsAndRollover},
     {"Random2 melody replacement, delay and cancellation", testPlayfulReplacementDelayAndCancellation},
     {"rising win chime and silent gaps", testWinPatternAndSilenceGaps},

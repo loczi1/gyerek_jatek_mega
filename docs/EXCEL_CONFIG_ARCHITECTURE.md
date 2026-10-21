@@ -16,7 +16,74 @@ The current workbook already contains the two minimum sheets the generator consu
 | `PinMap_export` | Flat hardware export used for generated pin metadata | `ID`, `Info`, `ArduinoPin`, `Type` |
 | `GameControls` | Control bindings per game and level range | `GameId`, `Level`, `Action`, `ControlId` |
 
-To complete the migration to a true workbook-only gameplay configuration, add these normalized sheets:
+### Implemented GameLevel rules (2026-10-20)
+
+The user-maintained **`GameLevel`** sheet in [../Gyerek_jatek_3.0.xlsx](../Gyerek_jatek_3.0.xlsx) has one row per game/menu-level combination. Its actual columns are **`GameID`, `MenuLevel (szint)`, `Nehézség`, `Time (sec)`, `Hang jelzés`, `Info`**. Corrected Cyclon/Sorrend requirements are now implemented manually in source, superseding the earlier **documentation-only review** and old nonmemory Sorrend4/5 behavior.
+
+**The generator still does not consume `GameLevel`.** Gameplay constants/menus live in handwritten firmware and the synchronized designer definition; sheet edits alone cannot configure them. The singular human-readable sheet is not the proposed normalized `GameLevels` schema below. Blank time/sound cells specify no new value, not automatic behavior. The implementation leaves the workbook, generated headers and user-owned handoff unchanged.
+
+#### Implemented game placement and Sorrend rules
+
+| Game | Menu level | Implemented rules |
+| --- | --- | --- |
+| Random | 1 | Difficulty 1; no new timing or sound specified |
+| Random 2 | 1 | Difficulty 1; no new timing or sound specified |
+| Cyclon | 2, 3, 4, 5 | Four internal difficulties per menu level; see table below |
+| Sorrend (memory) | 2 | White sequence lights; no distractors; no input time limit; no warning specified |
+| Sorrend (memory) | 3 | White sequence lights; 4–6 random saturated-colored distractors; 3 seconds per hit; warnings at 2 and 1 seconds remaining |
+| Sorrend (memory) | 4 | White sequence lights; 4–10 random saturated-colored distractors; 2 seconds per hit; warnings at 1 and 0.5 seconds remaining |
+| Sorrend (memory) | 5 | White sequence lights; 8–10 random saturated-colored distractors; 1.2 seconds per hit; warnings at 1 and 0.5 seconds remaining |
+| Sima villogo | 2 | Difficulty 1; random target color; 10-second input time limit |
+
+All Sorrend variants are **1–32-step memory games with white targets**, including levels4/5. Distractor counts are additional to the target, distinct and excluding it; at most ten plus one target fit the eleven channels. `RANDOM_SATURATED` excludes white. Times are per required correct input, reset at each Input entry (including after540 ms correct feedback), not a whole-sequence or menu deadline. Deadline wins at the boundary. Preserve fresh any-panel start,500 ms intro/show,200 ms gap, playback-release gating,540 ms green/Win per correct answer and740 ms red/Loss for wrong/chord/deadline; max32/failure returns Ready.
+
+**Explicit implementation choices where the workbook is unspecified:** distractors refresh positions/colors on **each shown step**, stay fixed within that Showing, and appear **only in Showing**. Input hides both target and distractors; gaps are dark, preserving memory play. Warnings use the existing80 ms/880 Hz effect, once at each threshold while awaiting input. These choices are source behavior, not values inferred or imported from the sheet.
+
+#### Implemented Cyclon profiles
+
+`MenuLevel` identifies the root submenu; internal difficulties 1–4 are the successive stages within that selected Cyclon profile. The cell's `+9` denotes a total of nine accepted positions, not an offset of nine.
+
+| Menu level | Internal difficulty | Step interval per LED | Accepted offset from centre | Total accepted LEDs |
+| --- | --- | --- | --- | --- |
+| 2 | 1 | 50 ms | −4…+4 | 9 |
+| 2 | 2 | 40 ms | −2…+2 | 5 |
+| 2 | 3 | 40 ms | −2…+2 | 5 |
+| 2 | 4 | 40 ms | −1…+1 | 3 |
+| 3 | 1 | 40 ms | −4…+4 | 9 |
+| 3 | 2 | 35 ms | −2…+2 | 5 |
+| 3 | 3 | 30 ms | −2…+2 | 5 |
+| 3 | 4 | 30 ms | −1…+1 | 3 |
+| 4 | 1 | 50 ms | −2…+2 | 5 |
+| 4 | 2 | 40 ms | −1…+1 | 3 |
+| 4 | 3 | 35 ms | 0, +1 | 2 |
+| 4 | 4 | 20 ms | 0, +1 | 2 |
+| 5 | 1 | 40 ms | −2…+2 | 5 |
+| 5 | 2 | 35 ms | −1…+1 | 3 |
+| 5 | 3 | 30 ms | 0, +1 | 2 |
+| 5 | 4 | 20 ms | 0 only | 1 |
+
+The literal **centre +1, total 2** means centre plus its next higher-index LED, not symmetric ±1. Cyclon times are **milliseconds per LED step**, not Sorrend seconds per answer. Selection/reselection resets the chosen profile and waits for fresh D39; the intro, four-stage progression, score/feedback and release gating remain. No Cyclon response deadline is introduced.
+
+#### Added challenge engines and menu bindings
+
+[../src/game/ChallengeGames.cpp](../src/game/ChallengeGames.cpp) provides portable `Lock3`, `Lock4` and `Duel` state machines. Hardware sampling/rendering remains in application/config/LED adapters; no new task, buffer or automatic workbook import is added.
+
+- **Kapcsolozar3/4:** SW01–05 literal GPIO HIGH mask, D40/42/38/36/37; paired strip76–80. Level3 lit→HIGH/off→LOW, unlimited; level4 inverse,2000 ms deadline from round start, deadline wins, warnings1/0.5 seconds remaining. Whole five-level match must be stable30 ms, including LOW; random displayed mask excludes the currently solved vector (inverted on4). Selection/reselection starts immediately; Win540/Loss740 then Ready, fresh D39 for another round. HIGH=physical up remains an unverified assumption, not `ActiveLevel` metadata.
+- **Parbaj:** upper left channels0–2 (BTN01–03), right8–10 (BTN12–14), three distinct colors each with exactly one common from hues0/32/64/96/160. Auto-start2-second preview, warnings1/0.5 seconds remaining; afterward common-color cue at BTN09/channel5/pixel73, upper colors stay lit. No response deadline. Preview presses are ignored and require stable release. Correct wins/wrong loses; same-side chord wrong; simultaneous both correct→both green/draw, both wrong→both red/draw, mixed→correct wins. Three90 ms on/off blinks total540 ms, one Win if any answer correct else Loss; Ready requires fresh upper press.
+
+| Menu | Action IDs in order |
+| --- | --- |
+| Szint1 | Random35, Random2:38 (unchanged) |
+| Szint2 | Cyclon10, Sorrend36, Sima villogo37 (unchanged placement) |
+| Szint3 | Cyclon42, Sorrend39, Kapcsolozar45, Parbaj47 |
+| Szint4 | Cyclon43, Sorrend40, Kapcsolozar46 |
+| Szint5 | Cyclon44, Sorrend41 |
+
+All levels retain Back. Defined new callbacks `CyclonGame3/4/5`, `LockGame3/4`, `DuelGame` in [../src/ui/MenuCallbacks.cpp](../src/ui/MenuCallbacks.cpp) call application selectors; declarations/menu metadata/designer IDs must remain synchronized. Random, Random2 and Flasher gameplay is unchanged. All selected games disable menu timeout, including Ready/results; cancellation stops audio/clears100 pixels and restores normal120-second timeout. The same two application tasks serve every engine.
+
+### Optional future normalized schema
+
+For a future migration to machine-readable workbook-only gameplay configuration, the earlier normalized proposal is:
 
 | Sheet | Purpose | Required columns |
 | --- | --- | --- |
@@ -214,13 +281,12 @@ docs/
 ## Migration notes
 
 - Today the workbook is already authoritative for exported pin metadata and control bindings.
-- The current firmware still keeps Cyclon and Random/Simon timing constants in source because the workbook does not yet provide a dedicated `GameLevels` sheet. Root Szint1–5 are menu groups, not workbook level masks or Cyclon's four internal difficulties.
+- Current Cyclon, panel and challenge rules remain source constants; corrected human-readable `GameLevel` requirements were manually implemented, not imported. A normalized machine-readable `GameLevels` migration is still future work. Root Szint1–5 are menu groups, not workbook level masks or Cyclon's four internal difficulties.
 - Once `GameLevels` and `BoardRoles` exist, `CycloneGame` can move to generated `LevelConfig` rows and the last handwritten semantic board roles can disappear.
 
-## Current runtime consumers and evidence (2026-10-15)
+## Current runtime consumers and evidence (implementation session 2026-10-20)
 
-- Root is **Szint1–Szint5, Ujrainditas, Debug**. Szint1 offers Random; Szint2 offers Cyclon and Simon mondja; Szint3–5 are intentionally Back-only by user request.
-- Boot selects no game and leaves the strip dark. Cyclon selection waits for fresh D39; its four internal difficulties are unchanged. Random re-selection resets it; each fresh debounced safe configured input/switch press chooses one of 11 lamps, a random hue and a 220–1760 Hz/250 ms tone. Menu/peripheral inputs are excluded; matching Ikarus GPIO lamps are not switched automatically.
-- Simon selection/re-selection resets to Ready. A fresh press of any of its 11 buttons starts and is consumed; random sequences grow from 1 to 32. Initial pause/light are 500 ms, gaps 200 ms. Playback-held input is ignored until release; answers repeat the same buttons. Correct presses give 540 ms green plus Cyclon Win; wrong/chord or 10-second input timeout gives 740 ms red plus Cyclon Loss. Failure/max-32 completion waits for a fresh start press.
-- Selecting any game (Cyclon, Random or Simon) disables tcMenu automatic return entirely via `renderer.turnOffResetLogic()`, including ready, gameplay and results. After completion/failure the game remains selected with no menu timeout. Manually leaving the owning level submenu (Back/root or another menu), Debug and restart cancel the game, tone and all 100 LEDs and restore the normal 120-second menu/Debug timeout. Simon's 10-second answer timeout and the LED Debug screen's own 120-second timer are unchanged. Debug exit does not resume a game. All modes reuse the existing two application tasks.
-- The latest full suite passed **115 native tests and 32 Python checks**. The final firmware build is pending; no final build result or size is claimed here. The new behavior remains **hardware untested**; **no firmware was uploaded** for this update.
+- [../src/config/PanelConfig.h](../src/config/PanelConfig.h) resolves corrected panel lamps and metal-switch identities from generated pin/pair metadata. Cyclon, panel and challenge engines consume source profiles. Random2 uses paired strip/GPIO lamps; original Random does not drive matching Ikarus lamps.
+- Boot selects no game and leaves the strip dark. Cyclon waits for fresh D39; Sorrend/Flasher consume a fresh any-panel start. Only new Kapcsolozar/Parbaj first selection/reselection autostarts. Manual owning-level exit, another game/menu, Debug and restart cancel old game/audio/100 pixels; no Debug autoresume. Selection disables tcMenu reset logic throughout gameplay/Ready/results; cancellation restores normal120-second menu/Debug timeout. Gameplay deadlines and LED Debug's timer are separate.
+- **Current full normal and undefined-behavior-sanitized suites: 157 native tests / 36 Python checks passed each; Mega build successful, static SRAM 4,356 / 8,192 bytes, flash 67,936 / 253,952 bytes.** No upload or hardware verification. Workbook, generated headers and user-owned handoff unchanged.
+- **Historical evidence only:** 2026-10-15:115 native/32 Python passed (build was pending at that checkpoint); 2026-10-19 Random2:126/33 normal/sanitized passed, SRAM4123/flash62336; earlier Sorrend:135/34 normal/sanitized passed, SRAM4168/flash63386. None is sanitizer/SRAM evidence for the current revision. Device acceptance remains open in [HARDWARE_TEST_CHECKLIST.md](HARDWARE_TEST_CHECKLIST.md).

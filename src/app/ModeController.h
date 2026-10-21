@@ -17,6 +17,9 @@ public:
 
     bool select(Mode mode, uint32_t now, bool buttonPressed);
     bool restart(uint32_t now, bool buttonPressed);
+    // Configure 2..5 while the game is Disabled/Idle, before select/restart.
+    // No state/audio reset or implicit game selection; false leaves it unchanged.
+    bool selectCycloneLevel(uint8_t menuLevel);
     // Called by the game/input task; only state entry starts a result sound.
     bool update(uint32_t now, bool buttonPressed);
     // Called independently by the cooperative audio task. Debug is silent;

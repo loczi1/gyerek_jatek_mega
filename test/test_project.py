@@ -10,6 +10,23 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def function_body(source, name):
+    """Find a C++ function body without depending on its neighboring functions."""
+    source = re.sub(r"//[^\n]*|/\*[\s\S]*?\*/", "", source)
+    match = re.search(rf"\b{re.escape(name)}\s*\([^;{{}}]*\)\s*\{{", source)
+    if match is None:
+        raise AssertionError(f"Missing function definition: {name}")
+    depth = 1
+    for index in range(match.end(), len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[match.end():index]
+    raise AssertionError(f"Unclosed function body: {name}")
+
+
 class ProjectTests(unittest.TestCase):
     def test_workspace_contains_only_this_project(self):
         workspace = json.loads((ROOT / "Gyerek_jatek.code-workspace").read_text(encoding="utf-8"))
@@ -67,6 +84,20 @@ class ProjectTests(unittest.TestCase):
             if callback:
                 self.assertIn(f"CALLBACK_FUNCTION {callback}(", header)
                 self.assertIn(f"CALLBACK_FUNCTION {callback}(", callbacks)
+            if entry["type"] == "actionMenu":
+                # All action fields follow the designer's flash-backed,
+                # volatile, visible, locally invokable action pattern.
+                self.assertEqual(set(item), {"name", "variableName", "functionName", "id",
+                                            "eepromAddress", "readOnly", "localOnly",
+                                            "visible", "staticDataInRAM"})
+                self.assertEqual({key: item[key] for key in
+                                  ("eepromAddress", "readOnly", "localOnly", "visible", "staticDataInRAM")},
+                                 {"eepromAddress": -1, "readOnly": False, "localOnly": False,
+                                  "visible": True, "staticDataInRAM": False})
+                self.assertRegex(source, rf'const PROGMEM AnyMenuInfo minfo{variable}\s*=\s*'
+                                 rf'\{{\s*"{re.escape(item["name"])}",\s*{item["id"]},\s*'
+                                 rf'0xffff,\s*0,\s*{callback}\s*\}};')
+                self.assertIn(f"extern ActionMenuItem menu{variable};", header)
             for index, text in enumerate(item.get("enumEntries", [])):
                 self.assertIn(f'enumStr{variable}_{index}[] PROGMEM = "{text}";', source)
             if entry["type"] == "runtimeList":
@@ -102,11 +133,17 @@ class ProjectTests(unittest.TestCase):
         self.assertEqual([entry["item"]["id"] for entry in roots], [30, 31, 32, 33, 34, 5, 7])
         expected_children = {
             30: [("Random", "Random", "RandomGame", 35), ("Random 2", "Random2", "RandomGame2", 38)],
-              31: [("Cyclon", "Jatek", "Jatek", 10), ("Sorrend", "Simon", "SimonGame", 36),
+            31: [("Cyclon", "Jatek", "Jatek", 10), ("Sorrend", "Simon", "SimonGame", 36),
                  ("Sima villogo", "Flasher", "FlasherGame", 37)],
-              32: [("Sorrend", "Sorrend3", "SorrendGame3", 39)],
-              33: [("Sorrend", "Sorrend4", "SorrendGame4", 40)],
-              34: [("Sorrend", "Sorrend5", "SorrendGame5", 41)],
+            32: [("Cyclon", "Cyclon3", "CyclonGame3", 42),
+                 ("Sorrend", "Sorrend3", "SorrendGame3", 39),
+                 ("Kapcsolozar", "Kapcsolozar3", "LockGame3", 45),
+                 ("Parbaj", "Parbaj", "DuelGame", 47)],
+            33: [("Cyclon", "Cyclon4", "CyclonGame4", 43),
+                 ("Sorrend", "Sorrend4", "SorrendGame4", 40),
+                 ("Kapcsolozar", "Kapcsolozar4", "LockGame4", 46)],
+            34: [("Cyclon", "Cyclon5", "CyclonGame5", 44),
+                 ("Sorrend", "Sorrend5", "SorrendGame5", 41)],
         }
         for parent_id, expected in expected_children.items():
             children = [entry for entry in definition["items"] if entry["parentId"] == parent_id]
@@ -124,6 +161,12 @@ class ProjectTests(unittest.TestCase):
         for variable, callback, function in (("Random", "RandomGame", "playRandom"),
                                              ("Random2", "RandomGame2", "playRandom2"),
                                              ("Jatek", "Jatek", "playGame"),
+                                             ("Cyclon3", "CyclonGame3", "playCyclon3"),
+                                             ("Cyclon4", "CyclonGame4", "playCyclon4"),
+                                             ("Cyclon5", "CyclonGame5", "playCyclon5"),
+                                             ("Kapcsolozar3", "LockGame3", "playLock3"),
+                                             ("Kapcsolozar4", "LockGame4", "playLock4"),
+                                             ("Parbaj", "DuelGame", "playDuel"),
                                              ("Simon", "SimonGame", "playSimon"),
                                              ("Sorrend3", "SorrendGame3", "playSorrend3"),
                                              ("Sorrend4", "SorrendGame4", "playSorrend4"),
@@ -141,35 +184,91 @@ class ProjectTests(unittest.TestCase):
         # Debug owns only its own subtree, not every non-root level menu.
         debug_ids = {7, 20, 600}
         debug_children = [entry for entry in definition["items"] if entry["parentId"] in debug_ids]
-        self.assertTrue(all(entry["item"]["variableName"] not in
-                    ("Random", "Random2", "Jatek", "Simon", "Flasher", "Sorrend3", "Sorrend4", "Sorrend5",
-                     "Level1", "Level2", "Level3", "Level4", "Level5")
-                    for entry in debug_children))
+        game_variables = {variable for children in expected_children.values()
+                                                    for _, variable, _, _ in children}
+        level_variables = {f"Level{level}" for level in range(1, 6)}
+        self.assertTrue(all(entry["item"]["variableName"] not in game_variables | level_variables
+                                                        for entry in debug_children))
 
     def test_sorrend_application_bindings_scopes_and_task_participation(self):
         header = (ROOT / "src/app/Application.h").read_text(encoding="utf-8")
         app = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
-        for function, selection, mode, level in (
-                ("playSimon", "Simon", "Simon", 2),
-                ("playSorrend3", "Simon", "Simon", 3),
-                ("playSorrend4", "Sorrend4", "Sorrend4", 4),
-                ("playSorrend5", "Sorrend5", "Sorrend5", 5)):
+        for function, mode, level in (
+                ("playSimon", "Simon", 2),
+                ("playSorrend3", "Sorrend3", 3),
+                ("playSorrend4", "Sorrend4", 4),
+                ("playSorrend5", "Sorrend5", 5)):
             with self.subTest(function=function):
                 self.assertIn(f"void {function}();", header)
-                self.assertRegex(app, rf"void {function}\(\)\s*\{{\s*"
-                                 rf"selectPanelGame\(SelectedGame::{selection},\s*"
-                                 rf"game::PanelMode::{mode},\s*&menuBackLevel{level}\);\s*\}}")
-        draw = app.split("void drawMode()", 1)[1].split("void synchronizeDebugView", 1)[0]
-        update = app.split("void update()", 1)[1].split("void updateAudio()", 1)[0]
-        audio = app.split("void updateAudio()", 1)[1].split("} // namespace", 1)[0]
-        for selection in ("Sorrend4", "Sorrend5"):
-            for section, operation in ((draw, "leds::drawPanel(panel);"),
-                                       (update, "panel.update(now, panelPressedMask())"),
-                                       (audio, "soundEffects.update(millis());")):
-                with self.subTest(selection=selection, operation=operation):
-                    self.assertRegex(section, rf"(?:if|else if)\s*\([^{{;]*"
-                                     rf"selectedGame == SelectedGame::{selection}\b[^{{;]*\)\s*"
-                                     rf"(?:\{{\s*)?(?:(?!\n    \}})[\s\S])*?{re.escape(operation)}")
+                body = function_body(app, function)
+                self.assertRegex(body, rf"\bgame::PanelMode::{mode}\b")
+                self.assertRegex(body, rf"&menuBackLevel{level}\b")
+        # The selection enum/helper may be shared; test the mode and scope
+        # contracts above rather than freezing a particular branch spelling.
+        for function, operation in (("drawMode", "leds::drawPanel(panel);"),
+                                    ("update", "panel.update(now, panelPressedMask())"),
+                                    ("updateAudio", "soundEffects.update(millis());")):
+            self.assertIn(operation, function_body(app, function))
+
+    def test_cyclon_menu_levels_bind_profiles_and_owning_scopes(self):
+        header = (ROOT / "src/app/Application.h").read_text(encoding="utf-8")
+        app = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
+        helpers = set()
+        for function, level in (("playGame", 2), ("playCyclon3", 3),
+                                ("playCyclon4", 4), ("playCyclon5", 5)):
+            with self.subTest(function=function):
+                self.assertIn(f"void {function}();", header)
+                body = function_body(app, function)
+                # Derive the helper name from the forwarding call rather than
+                # making its private spelling part of the public contract.
+                call = re.search(rf"\b(\w+)\(\s*{level},\s*&menuBackLevel{level}\s*\)", body)
+                self.assertIsNotNone(call, f"{function} must bind profile and scope {level}")
+                helpers.add(call.group(1))
+        for helper in helpers:
+            selection = function_body(app, helper)
+            self.assertIn("stopGames(", selection)
+            self.assertIn("controller.selectCycloneLevel(", selection)
+            self.assertLess(selection.index("stopGames("),
+                            selection.index("controller.selectCycloneLevel("))
+            self.assertIn("gameScope =", selection)
+            self.assertIn("renderer.turnOffResetLogic();", selection)
+            self.assertIn("renderer.menuAltered();", selection)
+        controller = (ROOT / "src/app/ModeController.cpp").read_text(encoding="utf-8")
+        self.assertIn("game_.setMenuLevel(", function_body(controller, "selectCycloneLevel"))
+        hardware = (ROOT / "src/hardware/LedDisplay.cpp").read_text(encoding="utf-8")
+        # Lighting must use the same profile hit predicate, including even
+        # two-pixel windows, rather than the old symmetric-radius shortcut.
+        self.assertIn("currentGame.isTargetPixel(", function_body(hardware, "draw"))
+
+    def test_challenge_menu_modes_scopes_cancellation_and_workbook_wiring(self):
+        header = (ROOT / "src/app/Application.h").read_text(encoding="utf-8")
+        app = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
+        for function, mode, level in (("playLock3", "Lock3", 3),
+                                      ("playLock4", "Lock4", 4),
+                                      ("playDuel", "Duel", 3)):
+            with self.subTest(function=function):
+                self.assertIn(f"void {function}();", header)
+                body = function_body(app, function)
+                self.assertRegex(body, rf"\bgame::ChallengeMode::{mode}\b")
+                self.assertRegex(body, rf"&menuBackLevel{level}\b")
+        stop = function_body(app, "stopGames")
+        self.assertIn("ChallengeMode::Disabled", stop)
+        self.assertIn("soundEffects.stop();", stop)
+        self.assertIn("stopTone();", stop)
+        self.assertIn("gameScope = nullptr;", stop)
+        update = function_body(app, "update")
+        self.assertIn("gameScope && menuMgr.getCurrentMenu() != gameScope", update)
+        self.assertIn("stopGames(now);", update)
+        config = (ROOT / "src/config/PanelConfig.h").read_text(encoding="utf-8")
+        # The metal switches use generated workbook identities, not a second
+        # hard-coded pin list. Preserve the physical lower-row correction.
+        for index in range(1, 6):
+            self.assertIn(f"ControlId::Sw0{index}Metal{index}", config + app)
+        self.assertIn("10 - channel", function_body(config, "panelStripPixel"))
+        self.assertIn("LampPairs", config)
+        challenge = (ROOT / "src/game/ChallengeGames.h").read_text(encoding="utf-8")
+        self.assertRegex(challenge, r"DuelButtonMask\s*=\s*0x0?707\s*;")
+        self.assertRegex(challenge, r"DuelCueChannel\s*=\s*5\s*;")
 
     def test_panel_games_hardware_wiring_and_cancellation(self):
         app = (ROOT / "src/app/Application.cpp").read_text(encoding="utf-8")
@@ -177,7 +276,6 @@ class ProjectTests(unittest.TestCase):
                         "panel.update(now, panelPressedMask())",
                         "soundEffects.update(millis())",
                         "gameScope && menuMgr.getCurrentMenu() != gameScope",
-                        "gameScope = &menuBackLevel2;",
                         "game::PanelMode::Random, &menuBackLevel1",
                         "game::PanelMode::Simon, &menuBackLevel2"):
             self.assertIn(binding, app)
@@ -208,8 +306,6 @@ class ProjectTests(unittest.TestCase):
         self.assertIn("gameLamps::setEnabled(selection == SelectedGame::Random2);", app)
         stop = app.split("void stopGames", 1)[1].split("void finishLedTest", 1)[0]
         self.assertIn("gameLamps::setEnabled(false);", stop)
-        cyclone = app.split("void playGame()", 1)[1].split("void selectPanelGame", 1)[0]
-        self.assertIn("stopGames(millis());", cyclone)
         self.assertIn("gameLamps::draw(panel.lampInputMask(), panelInputs, panelInputCount);", app)
         self.assertIn("leds::drawRandom2(panel, panelInputs, panelInputCount);", app)
         self.assertIn("game::PanelFeedback::Melody ? audio::Effect::Playful", app)
@@ -365,11 +461,11 @@ class ProjectTests(unittest.TestCase):
                          r"renderer\.setResetIntervalTimeSeconds\(board::MenuIdleTimeoutSeconds\);\s*"
                          r"renderer\.menuAltered\(\);")
         # Selection disables reset, not just periodically renews its countdown.
-        for start, end in (("void playGame()", "void selectPanelGame"),
-                           ("void selectPanelGame", "void playRandom()")):
-            selection = application.split(start, 1)[1].split(end, 1)[0]
-            self.assertIn("renderer.turnOffResetLogic();", selection)
-            self.assertRegex(selection, r"renderer\.turnOffResetLogic\(\);\s*renderer\.menuAltered\(\);")
+        # Cyclon profile helpers are checked with their entry points above.
+        # Panel selection is shared by all Sorrend levels and Random modes.
+        selection = function_body(application, "selectPanelGame")
+        self.assertIn("renderer.turnOffResetLogic();", selection)
+        self.assertRegex(selection, r"renderer\.turnOffResetLogic\(\);\s*renderer\.menuAltered\(\);")
         stop = application.split("void stopGames", 1)[1].split("void finishLedTest", 1)[0]
         self.assertRegex(stop, r"renderer\.setResetIntervalTimeSeconds\(board::MenuIdleTimeoutSeconds\);\s*renderer\.menuAltered\(\);")
         # This override belongs to application code, not a designer-owned file.

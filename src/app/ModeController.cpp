@@ -2,6 +2,10 @@
 
 namespace app {
 
+bool ModeController::selectCycloneLevel(uint8_t menuLevel) {
+    return game_.setMenuLevel(menuLevel);
+}
+
 bool ModeController::select(Mode mode, uint32_t now, bool buttonPressed) {
     if (mode != Mode::Cyclone && mode != Mode::Debug) return false;
     if (hasSelection_ && mode == mode_) return false;

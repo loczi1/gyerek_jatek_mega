@@ -49,11 +49,9 @@ void draw(const game::CycloneGame& currentGame) {
 
         case game::State::Playing: {
             FastLED.setBrightness(board::GameBrightness);
-            const int radius = game::CycloneGame::targetRadius(currentGame.level());
-            for (int offset = -radius; offset <= radius; ++offset) {
-                const int index = static_cast<int>(currentGame.target()) + offset;
-                if (index >= 0 && index < game::GameLedCount)
-                    pixels[index] = offset == 0 ? CRGB::Green : CRGB(255, 140, 0);
+            for (uint8_t index = 0; index < game::GameLedCount; ++index) {
+                if (currentGame.isTargetPixel(index))
+                    pixels[index] = index == currentGame.target() ? CRGB::Green : CRGB(255, 140, 0);
             }
             if (currentGame.position() < game::GameLedCount)
                 pixels[currentGame.position()] = CRGB::Red;
@@ -102,6 +100,40 @@ void drawRandom2(const game::PanelGames& currentGame, const uint8_t* inputs, uin
             const uint8_t pixel = board::pairedStripPixel(inputs[i]);
             if (pixel > 0 && pixel <= board::LedStripCapacity)
                 pixels[pixel - 1] = CHSV(currentGame.hue(), 255, 255);
+        }
+    }
+    FastLED.show();
+}
+
+void drawChallenge(const game::ChallengeGames& currentGame, uint32_t now) {
+    fill_solid(pixels, board::LedStripCapacity, CRGB::Black);
+    FastLED.setBrightness(board::GameBrightness);
+    const auto phase = currentGame.phase();
+    const bool result = currentGame.resultVisible(now);
+    if (currentGame.mode() == game::ChallengeMode::Duel) {
+        for (uint8_t side = 0; side < 2; ++side) {
+            for (uint8_t i = 0; i < 3; ++i) {
+                const uint8_t channel = (side == 0 ? 0 : 8) + i;
+                const uint8_t pixel = board::panelStripPixel(channel);
+                if (!pixel || pixel > board::LedStripCapacity) continue;
+                if (phase == game::PanelPhase::Showing || phase == game::PanelPhase::Input)
+                    pixels[pixel - 1] = CHSV(currentGame.duelHue(channel), 255, 255);
+                else if (result)
+                    pixels[pixel - 1] = (currentGame.wonSides() & (1U << side)) ? CRGB::Green : CRGB::Red;
+            }
+        }
+        const uint8_t cue = board::panelStripPixel(game::DuelCueChannel);
+        if (currentGame.cueVisible() && cue && cue <= board::LedStripCapacity)
+            pixels[cue - 1] = CHSV(currentGame.cueHue(), 255, 255);
+    } else {
+        for (uint8_t i = 0; i < 5; ++i) {
+            const uint8_t pin = generated::pins::pinNumber(board::MetalControls[i]);
+            const uint8_t pixel = board::pairedStripPixel(pin);
+            if (!pixel || pixel > board::LedStripCapacity) continue;
+            if (phase == game::PanelPhase::Input && (currentGame.targetMask() & (1U << i)))
+                pixels[pixel - 1] = CRGB::White;
+            else if (result)
+                pixels[pixel - 1] = phase == game::PanelPhase::RoundWin ? CRGB::Green : CRGB::Red;
         }
     }
     FastLED.show();

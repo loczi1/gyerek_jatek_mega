@@ -17,6 +17,7 @@ SOURCES = [
     "src/audio/SoundEffects.cpp",
     "src/game/CycloneGame.cpp",
     "src/game/PanelGames.cpp",
+    "src/game/ChallengeGames.cpp",
     "src/game/PairedLampOutputs.cpp",
     "src/music/Melody.cpp",
     "src/music/MusicPlayer.cpp",
@@ -33,6 +34,7 @@ SOURCES = [
     "test/native/test_input.cpp",
     "test/native/test_led_strip.cpp",
     "test/native/test_panel_games.cpp",
+    "test/native/test_challenge_games.cpp",
     "test/native/test_main.cpp",
 ]
 

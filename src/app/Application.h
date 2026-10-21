@@ -9,6 +9,12 @@ namespace application {
 void begin();
 void run();
 void playGame();
+void playCyclon3();
+void playCyclon4();
+void playCyclon5();
+void playLock3();
+void playLock4();
+void playDuel();
 void playRandom();
 void playRandom2();
 void playSimon();

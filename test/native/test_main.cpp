@@ -9,6 +9,7 @@
 #include "test_input.h"
 #include "test_led_strip.h"
 #include "test_panel_games.h"
+#include "test_challenge_games.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -58,7 +59,7 @@ uint32_t startPlaying(game::CycloneGame& game, uint32_t now = 0, bool held = fal
 uint32_t moveToTarget(game::CycloneGame& game, uint32_t now) {
     for (unsigned int steps = 0; game.position() != game.target(); ++steps) {
         CHECK(steps < game::GameLedCount);
-        now += game::CycloneGame::movementInterval(game.level());
+        now += game.movementInterval();
         CHECK(game.update(now, false));
     }
     return now;
@@ -307,6 +308,172 @@ void testRestartAndDisable() {
     CHECK(!game.update(now + 500U, false));
 }
 
+void testCycloneMenuProfilesAndBounds() {
+    const uint8_t intervals[4][4] = {
+        {50, 40, 40, 40}, {40, 35, 30, 30},
+        {50, 40, 35, 20}, {40, 35, 30, 20}
+    };
+    const uint8_t windows[4][4] = {
+        {9, 5, 5, 3}, {9, 5, 5, 3}, {5, 3, 2, 2}, {5, 3, 2, 1}
+    };
+    for (uint8_t menu = 2; menu <= 5; ++menu) {
+        for (uint8_t stage = 1; stage <= game::LevelCount; ++stage) {
+            const uint8_t width = windows[menu - 2][stage - 1];
+            const int before = (width - 1) / 2;
+            const int after = width / 2;
+            CHECK(game::CycloneGame::movementInterval(menu, stage) == intervals[menu - 2][stage - 1]);
+            CHECK(game::CycloneGame::targetWindowSize(menu, stage) == width);
+            for (unsigned int target = 0; target <= UINT8_MAX; ++target) {
+                unsigned int hits = 0;
+                const bool valid = target >= game::MinimumTarget &&
+                    target <= game::MaximumTarget && static_cast<int>(target) >= before;
+                for (unsigned int pixel = 0; pixel <= UINT8_MAX; ++pixel) {
+                    const int difference = static_cast<int>(pixel) - static_cast<int>(target);
+                    const bool expected = valid && pixel < game::GameLedCount &&
+                        difference >= -before && difference <= after;
+                    const bool hit = game::CycloneGame::isHit(menu, stage,
+                        static_cast<uint8_t>(pixel), static_cast<uint8_t>(target));
+                    CHECK(hit == expected);
+                    if (hit) ++hits;
+                }
+                CHECK(hits == (valid ? width : 0));
+            }
+        }
+    }
+    const uint8_t invalidMenus[] = {1, 6, 255};
+    const uint8_t invalidStages[] = {0, 5, 255};
+    for (uint8_t menu : invalidMenus) {
+        CHECK(game::CycloneGame::movementInterval(menu, 1) == 0);
+        CHECK(game::CycloneGame::targetWindowSize(menu, 1) == 0);
+        CHECK(!game::CycloneGame::isHit(menu, 1, 20, 20));
+    }
+    for (uint8_t stage : invalidStages) {
+        for (uint8_t menu = 0; menu <= 5; ++menu) {
+            CHECK(game::CycloneGame::movementInterval(menu, stage) == 0);
+            CHECK(game::CycloneGame::targetWindowSize(menu, stage) == 0);
+            CHECK(!game::CycloneGame::isHit(menu, stage, 20, 20));
+        }
+    }
+}
+
+void testCycloneProfilesThroughAllStages() {
+    const uint8_t intervals[4][4] = {
+        {50, 40, 40, 40}, {40, 35, 30, 30},
+        {50, 40, 35, 20}, {40, 35, 30, 20}
+    };
+    for (uint8_t menu = 2; menu <= 5; ++menu) {
+        game::CycloneGame current(pickTarget);
+        CHECK(current.setMenuLevel(menu));
+        uint32_t now = startPlaying(current, UINT32_MAX - game::IntroDurationMs - 41U);
+        for (uint8_t stage = 1; stage <= game::LevelCount; ++stage) {
+            CHECK(current.level() == stage);
+            const uint32_t interval = intervals[menu - 2][stage - 1];
+            CHECK(current.movementInterval() == interval);
+            CHECK(!current.update(now + interval - 1U, false));
+            now += interval;
+            CHECK(current.update(now, false));
+            CHECK(current.position() == 1);
+            unsigned int displayed = 0;
+            for (uint8_t pixel = 0; pixel < game::TotalLedCount; ++pixel) {
+                CHECK(current.isTargetPixel(pixel) == game::CycloneGame::isHit(
+                    menu, stage, pixel, current.target()));
+                if (current.isTargetPixel(pixel)) ++displayed;
+            }
+            CHECK(displayed == current.targetWindowSize());
+            now = hitTarget(current, now);
+            CHECK(current.scoreLeds() == (stage == 4 ? 5 : stage));
+            now = finishFeedback(current, now);
+        }
+        CHECK(current.state() == game::State::Idle);
+        CHECK(current.menuLevel() == menu);
+    }
+}
+
+void testCycloneProfileTargetClamping() {
+    const uint8_t rawTargets[] = {0, 3, 255};
+    for (uint8_t menu = 2; menu <= 5; ++menu) {
+        for (uint8_t raw : rawTargets) {
+            chosenTarget = raw;
+            game::CycloneGame current(pickTarget);
+            CHECK(current.setMenuLevel(menu));
+            startPlaying(current);
+            CHECK(current.target() == (raw == 255 ? game::MaximumTarget : (menu <= 3 ? 4 : 3)));
+            unsigned int pixels = 0;
+            for (uint8_t pixel = 0; pixel < game::TotalLedCount; ++pixel)
+                if (current.isTargetPixel(pixel)) ++pixels;
+            CHECK(pixels == current.targetWindowSize());
+        }
+    }
+}
+
+void testCycloneLiteralTwoPixelStops() {
+    for (uint8_t menu = 4; menu <= 5; ++menu) {
+        for (int offset = -1; offset <= 2; ++offset) {
+            game::CycloneGame current(pickTarget);
+            CHECK(current.setMenuLevel(menu));
+            uint32_t now = startPlaying(current);
+            for (uint8_t stage = 1; stage < 3; ++stage)
+                now = finishFeedback(current, hitTarget(current, now));
+            CHECK(current.targetWindowSize() == 2);
+            const uint8_t stopPixel = static_cast<uint8_t>(current.target() + offset);
+            while (current.position() != stopPixel) {
+                now += current.movementInterval();
+                CHECK(current.update(now, false));
+            }
+            CHECK(!current.update(now + 1U, true));
+            CHECK(current.update(now + 31U, true));
+            CHECK(current.state() == (offset == 0 || offset == 1 ?
+                game::State::WinFeedback : game::State::LossFeedback));
+        }
+    }
+}
+
+void testCycloneProfileSelectionAndCancellation() {
+    game::CycloneGame current(pickTarget);
+    audio::SoundEffects effects(playTone, stopTone);
+    app::ModeController modes(current, effects);
+    CHECK(current.menuLevel() == 0);
+    CHECK(!modes.selectCycloneLevel(0));
+    CHECK(!modes.selectCycloneLevel(1));
+    CHECK(!modes.selectCycloneLevel(6));
+    CHECK(!modes.selectCycloneLevel(255));
+    CHECK(current.menuLevel() == 0);
+    CHECK(modes.selectCycloneLevel(2));
+    CHECK(current.state() == game::State::Disabled);
+    CHECK(!modes.update(0, false)); // Configuring is not selecting a game.
+    CHECK(modes.select(app::Mode::Cyclone, 0, true));
+    CHECK(!modes.update(100, true)); // Selection-held press cannot start.
+    modes.update(101, false);
+    modes.update(131, false);
+    modes.update(132, true);
+    CHECK(modes.update(162, true));
+    CHECK(current.state() == game::State::Intro);
+    CHECK(!modes.selectCycloneLevel(3));
+    uint32_t now = 162U + game::IntroDurationMs;
+    CHECK(modes.update(now, true));
+    CHECK(!modes.selectCycloneLevel(4));
+    CHECK(current.menuLevel() == 2);
+    modes.update(++now, false);
+    modes.update(now += 30U, false);
+    modes.update(++now, true);
+    CHECK(modes.update(now += 30U, true));
+    CHECK(current.state() == game::State::LossFeedback);
+    CHECK(!modes.selectCycloneLevel(5));
+    CHECK(effects.isPlaying());
+    CHECK(modes.select(app::Mode::Debug, ++now, true));
+    CHECK(current.state() == game::State::Disabled);
+    CHECK(!effects.isPlaying());
+    CHECK(modes.selectCycloneLevel(5));
+    CHECK(modes.select(app::Mode::Cyclone, ++now, true));
+    CHECK(!modes.update(now + 100U, true));
+    CHECK(current.menuLevel() == 5);
+    CHECK(modes.restart(now + 101U, true));
+    CHECK(current.menuLevel() == 5);
+    CHECK(current.state() == game::State::Idle);
+    CHECK(!modes.update(now + 201U, true));
+    CHECK(tones == 1);
+}
+
 void testNoteDurations() {
     CHECK(music::noteDurationMs(8) == 428);
     CHECK(music::noteDurationMs(-8) == 642);
@@ -518,6 +685,11 @@ const Test Tests[] = {
     {"feedback timer rollover", testFeedbackRollover},
     {"random target bounds", testTargetClamping},
     {"restart and disable", testRestartAndDisable},
+    {"Cyclon workbook profiles and exhaustive pixel bounds", testCycloneMenuProfilesAndBounds},
+    {"Cyclon profile timing and all four stages across rollover", testCycloneProfilesThroughAllStages},
+    {"Cyclon profile target clamping keeps exact window sizes", testCycloneProfileTargetClamping},
+    {"Cyclon two-pixel windows judge centre and centre plus one", testCycloneLiteralTwoPixelStops},
+    {"Cyclon profile selection, debounce and cancellation", testCycloneProfileSelectionAndCancellation},
     {"integer note durations", testNoteDurations},
     {"melody bounds and repetition", testMelodyBoundsAndRepetition},
     {"non-blocking music and cancellation", testMusicAdvanceAndStop},
@@ -548,6 +720,7 @@ int main() {
     const size_t inputTests = runInputTests();
     const size_t ledTests = runLedStripTests();
     const size_t panelTests = runPanelGamesTests();
-    printf("\n%zu native regression tests passed.\n", sizeof(Tests) / sizeof(Tests[0]) + audioTests + debugTests + inputTests + ledTests + panelTests);
+    const size_t challengeTests = runChallengeGameTests();
+    printf("\n%zu native regression tests passed.\n", sizeof(Tests) / sizeof(Tests[0]) + audioTests + debugTests + inputTests + ledTests + panelTests + challengeTests);
     return EXIT_SUCCESS;
 }

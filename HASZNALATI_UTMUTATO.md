@@ -1,10 +1,27 @@
 # Gyerekjáték – rövid használati útmutató
 
+## Megvalósított játékok – 2026-10-20
+
+A korábbi, csak dokumentált tervet felváltotta a megvalósítás: **Cyclon a 2–5. szinten, fehér célú Sorrend memóriajáték minden 2–5. szinten**, továbbá új **Kapcsolózár** és **Párbaj** játék érhető el. Az LCD-n az új nevek ékezet nélkül: **Kapcsolozar**, **Parbaj**. Az Excel `GameLevel` lapját a generátor továbbra sem olvassa; a szabályok a programban vannak megvalósítva, az Excel átírása önmagában nem változtatja meg őket.
+
+| Sorrend-szint | Játéktípus / célfény | További színes zavaró LED | Idő helyes gombonként | Pityegés a lejárat előtt |
+| --- | --- | --- | --- | --- |
+| 2 | Memóriajáték / fehér | Nincs | Nincs időlimit | Nincs megadva |
+| 3 | Memóriajáték / fehér | 4–6 | 3 mp | 2 és 1 mp |
+| 4 | Memóriajáték / fehér | 4–10 | 2 mp | 1 és 0,5 mp |
+| 5 | Memóriajáték / fehér | 8–10 | 1,2 mp | 1 és 0,5 mp |
+
+A zavaró fények telített színűek, nem fehérek; darabszámuk a fehér célon felül értendő. **Csak a bemutatás alatt látszanak, lépésenként új helyet/színt kapnak; válaszadáskor a cél és a zavaró fények is eltűnnek.** Ez tudatos programbeli döntés, az Excel nem rögzítette a megjelenítés ütemét. A 4–5. szint már nem a korábbi, folyamatosan látható célt kereső játék.
+
+A Cyclon szintenként négy belső fokozatot használ, eltérő sebességgel/találati tartománnyal; lásd lent és a [pontos táblázatban](docs/EXCEL_CONFIG_ARCHITECTURE.md#implemented-cyclon-profiles). A két LED-es ablak a középsőt és a következő, nagyobb sorszámú LED-et jelenti. A Random, Random 2 és Sima villogó működése változatlan.
+
+Ez a kiegészítés csak a dokumentációt frissíti a már megvalósított működéshez; nem módosítja az Excelt/programot, és nem indít fordítást, tesztet vagy feltöltést. Az ellenőrzési állapot az útmutató végén olvasható.
+
 ## Kezelőszervek
 
 - **Joystick fel/le:** rövid mozdulatra egyet lép. Nyomva tartva fél másodperc után 300 ms-onként ismét egyet lép, gyorsítás nélkül. Menüpontváltás után engedd középre, mielőtt újra léptetsz.
 - **Menügomb:** menüpont megnyitása vagy választás jóváhagyása. Visszalépéshez válaszd a menü visszalépő sorát.
-- **Játékgomb (D39):** a Cyclon játék indítása és a találat megadása. Minden megnyomás után engedd fel!
+- **Játékgomb (D39):** Cyclon indítása/találat, illetve a Kapcsolózár következő menetének indítása készenlétből. Minden megnyomás után engedd fel!
 - **Potméter:** az A15 bemenetre csatlakozik. A háromállású kapcsoló két bemenete D25 és D24.
 
 ### Világító Ikarus kapcsolók
@@ -24,9 +41,17 @@ A bemenet a **Gombok / Digitalis**, a LED a **Digitalis ki** menüben tesztelhet
 
 ## Főmenü és játékválasztás
 
-- A főmenü: **Szint1**, **Szint2**, **Szint3**, **Szint4**, **Szint5**, **Ujrainditas**, **Debug**. Szint1 alatt sorrendben **Random**, **Random 2**, Szint2 alatt **Cyclon**, **Simon mondja**, majd **Sima villogó** választható (az LCD ékezet nélküli felirata: **Sima villogo**, belső módja: `Flasher`). Szint3–5 kérésre fenntartott, csak visszalépést tartalmazó menü.
+- A főmenü: **Szint1**, **Szint2**, **Szint3**, **Szint4**, **Szint5**, **Ujrainditas**, **Debug**. Minden szintmenüben van visszalépés. A játékok sorrendje:
+
+	| Menü | Játékok |
+	| --- | --- |
+	| Szint1 | Random, Random 2 |
+	| Szint2 | Cyclon, Sorrend, Sima villogo (Sima villogó) |
+	| Szint3 | Cyclon, Sorrend, Kapcsolozar, Parbaj |
+	| Szint4 | Cyclon, Sorrend, Kapcsolozar |
+	| Szint5 | Cyclon, Sorrend |
 - Bekapcsoláskor **nincs kiválasztott játék, a szalag sötét**. Előbb válassz játékot; a főmenü szintjei nem azonosak a Cyclon négy belső nehézségével.
-- **Bármely játék (Cyclon, Random, Random 2, Simon vagy Sima villogó / Flasher) kiválasztásakor az automatikus menü-visszalépés teljesen kikapcsol.** Készenlétben, játék és eredményjelzés közben, valamint a menet befejezése vagy hiba után is kiválasztva marad a játék, **menü-időkorlát nélkül**. A Simon és a Sima villogó 10 másodperces bemeneti tétlenségi időkorlátja ettől független játékszabály.
+- **Bármely kiválasztott játéknál teljesen kikapcsol az automatikus menü-visszalépés**, készenlétben, játék/eredményjelzés közben és hiba után is. A Sima villogó 10 másodperces időkorlátja, a Sorrend3–5 válaszideje és a Kapcsolózár4 határideje ettől független játékszabály; a játékot nem választják le.
 - A játékot tartalmazó szintmenü kézi elhagyása (visszalépés, főmenü vagy másik menü), a Debug és az újraindítás megszakítja a játékot és a hangot, mind a **100 tárolt LED-helyet** törli, és visszaállítja a normál menü/Debug **120 másodperces** időkorlátját. A Debugból visszatérve nincs automatikus folytatás: válassz újra játékot.
 
 ## Szint1 – Random
@@ -44,20 +69,46 @@ A **Random** kiválasztása után minden biztonságos, konfigurált digitális g
 
 Az eredeti **Random** működése változatlan: ott véletlen panellámpa és egyetlen rövid hang jár a gombnyomásért.
 
-## Szint2 – Simon mondja
+## Szint2–5 – Sorrend: jegyezd meg a fehér fénysort!
 
-1. Válaszd a **Simon mondja** menüpontot. A 11 panelgomb bármelyikének új megnyomása indít; ez az indító nyomás még nem válasz. Engedd fel a gombot.
-2. Figyeld a véletlen fénysort: **500 ms** kezdeti szünet után egy fény **500 ms-ig** világít, a lépések között **200 ms** szünet van. A sor egy elemmel indul, majd sikeres ismétlésenként bővül, legfeljebb **32 elemig**.
-3. Ugyanazokkal a gombokkal ismételd meg a sorrendet. A bemutatás alatti nyomás nem válasz; a nyomva tartott gombot előbb fel kell engedni.
-4. Minden helyes nyomás **540 ms zöld visszajelzést** és a Cyclon emelkedő győzelmi hangját adja. Rossz gomb, egyszerre több gomb vagy **10 másodperc válasz nélküli várakozás** esetén **740 ms piros visszajelzés** és a Cyclon vesztési hangja következik.
-5. Hiba vagy a 32 elem teljesítése után új, friss gombnyomással indulhatsz ismét. A Simon újbóli kiválasztása törli az előző sort.
+Az eddigi Simon mondja neve **Sorrend**. Most minden szinten **növekvő memóriajáték**, nem folyamatosan látható célt kereső játék.
+
+1. Válaszd a kívánt szint **Sorrend** menüpontját. A 11 panelgomb bármelyikének **friss** megnyomása indít; az indítónyomás még nem válasz. Engedd fel a gombot. Újbóli kiválasztás törli az előző sort.
+2. **500 ms** kezdeti szünet után a sor elemei egyenként jelennek meg: **500 ms fehér célfény**, majd **200 ms sötét**. A sort egy elemmel kezded, sikeres teljes visszajátszás után egy új elemmel bővül, legfeljebb **32 elemig**.
+3. Szint2-n nincs zavaró fény. Szint3-on **4–6**, Szint4-en **4–10**, Szint5-ön **8–10** további telített színű lámpa jelenik meg minden bemutatott fehér cél mellett, különböző helyeken, a cél helyét kihagyva. A zavarók lépésenként frissülnek, egy bemutatott lépésen belül nem változnak. **A fehér célokat jegyezd meg, ne a színes fényeket!**
+4. A bemutatás után **a cél és a zavarók is sötétek**. Ugyanazokkal a gombokkal ismételd meg a fehér fények sorrendjét. Bemutatás alatt nyomott gomb nem válasz; fel kell engedni az új nyomáshoz.
+5. Minden helyes válasz **540 ms zöld jelzést és győzelmi hangot** ad. A következő válaszra ismét teljes idő jár: Szint2 **korlátlan**, Szint3 **3 mp**, Szint4 **2 mp**, Szint5 **1,2 mp**. Az idő minden válaszra várás kezdetén indul, nem az egész sorra együtt vonatkozik; a zöld jelzés nem fogyasztja a következő válasz idejét.
+6. Szint3-on **2 és 1 mp**, Szint4/5-ön **1 és 0,5 mp** hátralévő időnél rövid, **80 ms-os, 880 Hz-es** pityegés figyelmeztet. Nem hosszabbítja meg a határidőt. A pontos határidőre vagy utána elfogadott válasz már késő.
+7. Rossz gomb, több gomb együtt vagy határidő-lejárat: **740 ms piros jelzés és vesztési hang**, majd készenlét. Hiba vagy 32 elem teljesítése után friss panelgombnyomás indít új sort. Szint2-n a várakozás önmagában nem hiba.
+
+Visszalépés, szintmenü elhagyása, másik játék, Debug vagy újraindítás leállít minden hangot és törli mind a 100 LED-helyet. Kiválasztva nincs automatikus menü-visszalépés, készenlétben sem.
+
+## Szint3/4 – Kapcsolózár
+
+1. A **Kapcsolozar** kiválasztásakor **azonnal indul az első menet**; újbóli kiválasztás új alaphelyzetből szintén azonnal indít. Az öt fémkapcsolót használd: **SW01–05**, bemenetük sorrendben **D40, D42, D38, D36, D37**, saját fehér lámpájuk a **76–80. LED**.
+2. **Szint3:** világító lámpához **HIGH**, sötéthez **LOW** kapcsolóállapot kell, időkorlát nélkül. **Szint4:** fordítva, világítóhoz **LOW**, sötéthez **HIGH** kell, és **2 másodperc** alatt kell megoldani a menet kezdetétől.
+3. A HIGH=felfelé állás **bekötési feltételezés, még készüléken ellenőrizendő**. A program tényleges HIGH/LOW lábszintet néz, nem általános „lenyomott” jelet. Ezt a Debug / Digitalis nézetben ellenőrizd, és csak az ismert bekötés szerint értelmezd a kapcsoló irányát.
+4. **Mind az öt kapcsolónak egyszerre kell a megfelelő állásban lennie, legalább 30 ms-ig stabilan.** A sötét lámpákhoz tartozó állapot is számít. A véletlen új feladvány nem lehet az éppen már megoldott kapcsolókombináció.
+5. Siker: **540 ms zöld jelzés és győzelmi hang**. Szint4-en **1 és 0,5 mp** hátralévő időnél pityegés; lejáratkor **740 ms piros jelzés és vesztési hang**. A határidő pillanatában stabilizálódó megoldás már késő.
+6. Eredmény után készenlét következik: **a D39 játékgomb friss megnyomása** indít új feladványt. Nyomva tartás nem indít újra. Visszalépés, másik játék, Debug vagy újraindítás azonnal megszakít; nincs automatikus menü-időkorlát.
+
+## Szint3 – Párbaj
+
+1. Válaszd a **Parbaj** menüpontot: **azonnal indul a 2 másodperces bemutatás**. Bal játékos: felső **BTN01–03**; jobb játékos: felső **BTN12–14**. Mindkét oldalon három különböző szín látszik az ötszínű készletből, és **pontosan egy közös szín** van.
+2. A bemutatás végéig ne válaszolj; **1 és 0,5 mp** hátralévő időnél pityegés szól. Utána az **alsó középső, BTN09 lámpája (73. LED)** megmutatja a közös színt; a felső színek tovább világítanak. Az alsó lámpa csak jelzés, **nem válaszgomb**.
+3. **Saját felső sora megfelelő színű gombját** nyomja meg mindkét játékos. Nincs válaszadási időkorlát. A bemutatás alatt nyomott gomb nem számít; előbb minden felső gombot fel kell engedni, majd frissen nyomni.
+4. Az első elfogadott válasz dönt: helyes gombbal nyersz, hibással veszítesz. Saját oldalon több gomb együtt **hibás**, akkor is, ha a jó gomb köztük van. Ha mindkét válasz ugyanabban a feldolgozási lépésben érkezik: mindkettő helyes → **mindkét oldal zöld, döntetlen**; mindkettő hibás → **mindkettő piros, döntetlen**; vegyes → **a helyes válaszoló nyer**.
+5. Az eredmény három **90 ms világít/90 ms sötét** villanás, összesen **540 ms**. A nyertes oldal zöld, a vesztes piros. Egyetlen győzelmi hang szól, ha volt helyes válasz; különben egyszeri vesztési hang, amely az eredmény végén leáll.
+6. Készenlétből **bármely felső gomb friss megnyomása** indít új bemutatást; ez még nem válasz. Az eredmény alatt nyomva tartott gomb nem indít újra. Újbóli menükiválasztás azonnal új bemutatást indít; D39 és az alsó gombok nem indítják újra a Párbajt.
+
+A két új játék is a meglévő két alkalmazásfeladatot és egyetlen 100 LED-es tárolót használja. Visszalépés, másik játék, Debug vagy újraindítás minden hangot leállít és mind a 100 LED-helyet törli; nincs automatikus folytatás.
 
 ## Szint2 – Sima villogó
 
-1. A Cyclon és a Simon mondja utáni harmadik játékot válaszd: az LCD-n **Sima villogo** látszik. Ugyanazt a **11 panelgombot** és az alább megadott, javított lámpakiosztást használja, mint a Simon. Bármelyik panelgomb új megnyomása indít; ez még nem válasz. Engedd fel a gombot, a bemutatás alatti nyomva tartás nem számít válasznak.
+1. A Cyclon és a Sorrend utáni harmadik játékot válaszd: az LCD-n **Sima villogo** látszik. Ugyanazt a **11 panelgombot** és az alább megadott, javított lámpakiosztást használja, mint a Sorrend. Bármelyik panelgomb új megnyomása indít; ez még nem válasz. Engedd fel a gombot, a bemutatás alatti nyomva tartás nem számít válasznak.
 2. **500 ms** kezdeti szünet után egy véletlen céllámpa **500 ms-ig** világít, majd **200 ms-ra** kialszik. Ezután ugyanaz a cél újra kigyullad, és **a hozzá tartozó gomb megnyomására várva folyamatosan látható marad**. Nem memóriajáték: nem kell eltűnt fénysort megjegyezni.
-3. Nyomd meg a világító célhoz tartozó gombot. Helyes válasznál **540 ms zöld visszajelzés** és ugyanaz az emelkedő győzelmi hang szól, mint a Simonban, majd a játék új, egyetlen célt választ.
-4. A körök száma **korlátlan**. Nincs felhalmozott vagy növekvő sorozat, és nincs 32 lépés utáni befejezés. A Simon mondja növekvő sorozata és szabályai változatlanok.
+3. Nyomd meg a világító célhoz tartozó gombot. Helyes válasznál **540 ms zöld visszajelzés** és ugyanaz az emelkedő győzelmi hang szól, mint a Sorrendben, majd a játék új, egyetlen célt választ.
+4. A körök száma **korlátlan**. Nincs felhalmozott vagy növekvő sorozat, és nincs 32 lépés utáni befejezés. Ez különbözik a minden 2–5. szinten növekvő Sorrend memóriajátéktól.
 5. Rossz gomb, egyszerre több gomb vagy **10 másodperc bemeneti tétlenség** esetén **740 ms piros visszajelzés** és ugyanaz a vesztési hang következik, majd a játék készenlétben új, friss indítónyomásra vár. A Sima villogó újbóli kiválasztása alaphelyzetbe állítja a játékot.
 6. Készenlétben, bemutatáskor, válaszra várva és zöld/piros visszajelzéskor sincs automatikus menü-visszalépés, hiba után sem. Kézi visszalépés, a szintmenü elhagyása, Debug vagy újraindítás megszakítja a játékot és a hangot, törli mind a **100 LED-helyet**, és visszaállítja a normál 120 másodperces menü-időkorlátot.
 
@@ -75,12 +126,21 @@ Az összes panellámpához **legalább 86 fizikai LED** szükséges; a Cyclon 75
 
 ## Cyclon – kapd el a fényt!
 
-1. A **Szint2 / Cyclon** menüpont kiválasztása után a játék a szivárványos készenléti képnél vár a **D39** gomb új megnyomására. Nincs külön zeneválasztás.
+1. A **Szint2/3/4/5 / Cyclon** kiválasztása után a játék a szivárványos készenléti képnél vár a **D39** gomb új megnyomására. Újbóli kiválasztás alaphelyzetbe állítja az adott profilt. Nincs külön zeneválasztás.
 2. Nyomd meg és engedd fel a **játékgombot**. Körülbelül 4 másodperces bevezető után elindul a piros fény.
-3. Nyomd meg újra a játékgombot, amikor a piros fény a célterületre ér. A cél közepét zöld, az első két szinten az elfogadható szomszédos helyeket narancssárga fény jelöli.
+3. Nyomd meg újra a játékgombot, amikor a piros fény a célterületre ér. A cél közepe zöld, az elfogadható szomszédos helyek narancssárgák, az adott profil/fokozat ablakának megfelelően.
 4. **Találat:** rövid, emelkedő hangjelzés és három zöld villanás, majd automatikusan következik a következő szint. **Hibás találat:** mélyülő hangjelzés és három piros villanás, és a játék véget ér. A hangjelzés egyszer szólal meg, a fényjelzéssel együtt.
 
-A játék **négy szintből** áll: a fény egyre gyorsabb, a célterület pedig szűkül. A kék jelzőfények az aktuális szintet mutatják; az ötödik a negyedik szint teljesítésekor világít. A játék végén a játékgombbal indíthatsz új menetet.
+A kiválasztott profil **négy egymást követő belső fokozatból** áll; ezek nem a főmenü szintjei. Az értékek az 1/2/3/4. fokozatra vonatkoznak:
+
+| Menüszint | Sebesség (ms/LED) | Elfogadott célterület (LED) |
+| --- | --- | --- |
+| 2 | 50 / 40 / 40 / 40 | 9 / 5 / 5 / 3 |
+| 3 | 40 / 35 / 30 / 30 | 9 / 5 / 5 / 3 |
+| 4 | 50 / 40 / 35 / 20 | 5 / 3 / 2 / 2 |
+| 5 | 40 / 35 / 30 / 20 | 5 / 3 / 2 / 1 |
+
+A páratlan szélesség középre szimmetrikus; **2 LED = közép és a következő, nagyobb sorszámú LED**, nem két szomszéd a közép mellett. A kék jelzőfények az aktuális fokozatot mutatják; az ötödik a negyedik teljesítésekor világít. A játék végén friss D39 nyomással indíthatsz új menetet. Minden nyomás után engedd fel!
 
 ## Újraindítás
 
@@ -118,4 +178,8 @@ A Debug megnyitása leállítja az aktuális játékot és a hangot, törli a sz
 
 A joystickkal görgess, a visszalépő sort a menügombbal válaszd ki. Az értékek automatikusan frissülnek. A Gombok teszthez a gombot a megfelelő bemenet és a közös GND közé kösd; külső lehúzó ellenállás nem szükséges. Egy állandó földelés vagy külső lehúzás szintén LOW-ként látszik. A bekötetlen bemenetek a többi nézetben ingadozhatnak, ez önmagában nem hiba. Csak ismert, 0–5 V-os jelhez és közös földhöz csatlakoztass tesztáramkört; foglalt vagy kimeneti csatlakozót ne köss a földre.
 
-**Ellenőrzés, 2026-10-19:** a Random 2-t tartalmazó Mega-fordítás és a teljes normál, valamint nem definiált műveleteket ellenőrző tesztfuttatás sikeres: **126 natív teszt és 33 Python-ellenőrzés**; statikus SRAM: **4123 / 8192 bájt**, flash: **62336 / 253952 bájt**. Továbbra is két alkalmazásfeladat működik. A Random 2 és a megőrzött alsósor-javítás **ebben a munkamenetben hardveren nincs ellenőrizve, feltöltés nem történt**.
+**Korábbi Random 2 ellenőrzés, 2026-10-19, a Sorrend-módosítás előtt:** a Mega-fordítás és a teljes normál, valamint nem definiált műveleteket ellenőrző tesztfuttatás sikeres volt: **126 natív teszt és 33 Python-ellenőrzés**; statikus SRAM: **4123 / 8192 bájt**, flash: **62336 / 253952 bájt**. Ez nem a mostani Sorrend-változat teljes teszteredménye.
+
+**Korábbi Sorrend-módosítás, 2026-10-19:** Mega-fordítás és teljes normál/szanitizált csomag sikeres: **135 natív teszt és 34 Python-ellenőrzés**, statikus SRAM **4168 / 8192 bájt**, flash **63386 / 253952 bájt**. Ez korábbi állapot, nem az új játékok igazolása.
+
+**A megvalósítási munkamenet eredménye, 2026-10-20:** a teljes normál és a nem definiált műveleteket ellenőrző szanitizált csomag egyaránt sikeres: **157 natív teszt és 36 Python-ellenőrzés** futtatásonként. Mega-fordítás sikeres: statikus SRAM **4356 / 8192 bájt**, flash **67936 / 253952 bájt**. A statikus SRAM-adat nem tartalmazza a futás közbeni verem/heap igényét. Nem történt feltöltés vagy hardveres ellenőrzés ehhez a változathoz. Az új profilok, Kapcsolózár/Párbaj, Random 2 és az alsósor-javítás készülékes ellenőrzése szükséges; lásd [hardveres ellenőrzőlista](docs/HARDWARE_TEST_CHECKLIST.md). A workbook és a felhasználó tulajdonában álló átadó változatlan maradt.

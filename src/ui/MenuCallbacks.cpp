@@ -9,6 +9,30 @@ void CALLBACK_FUNCTION Jatek(int) {
     application::playGame();
 }
 
+void CALLBACK_FUNCTION CyclonGame3(int) {
+    application::playCyclon3();
+}
+
+void CALLBACK_FUNCTION CyclonGame4(int) {
+    application::playCyclon4();
+}
+
+void CALLBACK_FUNCTION CyclonGame5(int) {
+    application::playCyclon5();
+}
+
+void CALLBACK_FUNCTION LockGame3(int) {
+    application::playLock3();
+}
+
+void CALLBACK_FUNCTION LockGame4(int) {
+    application::playLock4();
+}
+
+void CALLBACK_FUNCTION DuelGame(int) {
+    application::playDuel();
+}
+
 void CALLBACK_FUNCTION RandomGame(int) {
     application::playRandom();
 }

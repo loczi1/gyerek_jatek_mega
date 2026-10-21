@@ -29,6 +29,46 @@ uint8_t CycloneGame::targetRadius(uint8_t level) {
     return level == 1 ? 2 : (level == 2 ? 1 : 0);
 }
 
+bool CycloneGame::setMenuLevel(uint8_t menuLevel) {
+    if (menuLevel < 2 || menuLevel > 5 ||
+        (state_ != State::Disabled && state_ != State::Idle)) return false;
+    menuLevel_ = menuLevel;
+    return true;
+}
+
+uint8_t CycloneGame::targetWindowSize(uint8_t menuLevel, uint8_t level) {
+    if (level < 1 || level > LevelCount) return 0;
+    if (menuLevel == 0) return static_cast<uint8_t>(2 * targetRadius(level) + 1);
+    if (menuLevel == 2 || menuLevel == 3) {
+        switch (level) {
+            case 1: return 9;
+            case 2: case 3: return 5;
+            default: return 3;
+        }
+    }
+    if (menuLevel == 4 || menuLevel == 5) {
+        switch (level) {
+            case 1: return 5;
+            case 2: return 3;
+            case 3: return 2;
+            default: return menuLevel == 4 ? 2 : 1;
+        }
+    }
+    return 0;
+}
+
+uint32_t CycloneGame::movementInterval(uint8_t menuLevel, uint8_t level) {
+    if (level < 1 || level > LevelCount) return 0;
+    switch (menuLevel) {
+        case 0: return movementInterval(level);
+        case 2: return level == 1 ? 50 : 40;
+        case 3: return level == 1 ? 40 : (level == 2 ? 35 : 30);
+        case 4: return movementInterval(level);
+        case 5: return level == 1 ? 40 : (level == 2 ? 35 : (level == 3 ? 30 : 20));
+        default: return 0;
+    }
+}
+
 uint32_t CycloneGame::movementInterval(uint8_t level) {
     switch (level) {
         case 1: return 50;
@@ -40,12 +80,20 @@ uint32_t CycloneGame::movementInterval(uint8_t level) {
 }
 
 bool CycloneGame::isHit(uint8_t level, uint8_t position, uint8_t target) {
-    if (level < 1 || level > LevelCount || position >= GameLedCount ||
+    return isHit(0, level, position, target);
+}
+
+bool CycloneGame::isHit(uint8_t menuLevel, uint8_t level, uint8_t position, uint8_t target) {
+    const uint8_t width = targetWindowSize(menuLevel, level);
+    if (width == 0 || position >= GameLedCount ||
         target < MinimumTarget || target > MaximumTarget) return false;
 
+    // Two pixels mean exactly centre and centre+1, not a radius of one.
+    const int before = (width - 1) / 2;
+    const int after = width / 2;
+    if (target < before || static_cast<int>(target) + after >= GameLedCount) return false;
     const int distance = static_cast<int>(position) - static_cast<int>(target);
-    const int radius = targetRadius(level);
-    return distance >= -radius && distance <= radius;
+    return distance >= -before && distance <= after;
 }
 
 uint8_t CycloneGame::scoreLeds() const {
@@ -63,6 +111,8 @@ void CycloneGame::startLevel(uint8_t level, uint32_t now) {
     position_ = 0;
     target_ = pickTarget_ ? pickTarget_() : MinimumTarget;
     if (target_ < MinimumTarget) target_ = MinimumTarget;
+    const uint8_t before = static_cast<uint8_t>((targetWindowSize() - 1) / 2);
+    if (target_ < before) target_ = before;
     if (target_ > MaximumTarget) target_ = MaximumTarget;
     lastMoveAt_ = now;
     stateStartedAt_ = now;
@@ -117,10 +167,10 @@ bool CycloneGame::update(uint32_t now, bool buttonPressed) {
         case State::Playing:
             // Judge the pixel the player actually saw before moving it.
             if (pressed) {
-                enterFeedback(isHit(level_, position_, target_), now);
+                enterFeedback(isTargetPixel(position_), now);
                 return true;
             }
-            if (static_cast<uint32_t>(now - lastMoveAt_) < movementInterval(level_))
+            if (static_cast<uint32_t>(now - lastMoveAt_) < movementInterval())
                 return false;
             lastMoveAt_ = now;
             position_ = static_cast<uint8_t>((position_ + 1) % GameLedCount);

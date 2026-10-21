@@ -3,6 +3,7 @@
 #include "game/PairedLampOutputs.h"
 #include "debug/DigitalOutputTester.h"
 #include "config/PanelConfig.h"
+#include <initializer_list>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,6 +49,8 @@ uint32_t playback(game::PanelGames& panel, uint32_t now, uint32_t held = 0) {
     for (uint8_t i = 0; i < length; ++i) {
         CHECK(panel.phase() == game::PanelPhase::Showing);
         CHECK(panel.litChannel() == chosen % game::PanelChannelCount);
+        CHECK(panel.whiteTarget() == (panel.mode() == game::PanelMode::Simon));
+        CHECK(panel.distractorMask() == 0);
         CHECK(!panel.update(now + 499U, held));
         now += 500U;
         CHECK(panel.update(now, held));
@@ -192,17 +195,22 @@ void testSimonWrongMultipleAndRearm() {
     }
 }
 
-void testSimonTimeoutAndRollover() {
+void testSimonUnlimitedInputAndRollover() {
     game::PanelGames panel(randomBelow);
     chosen = 0;
-    const uint32_t now = playback(panel, start(panel, UINT32_MAX - 1000U));
+    uint32_t now = playback(panel, start(panel, UINT32_MAX - 1000U));
+    CHECK(panel.inputTimeoutMs() == 0);
     CHECK(!panel.update(now + 9999U, 0));
-    CHECK(panel.update(now + 10000U, 0));
-    CHECK(panel.phase() == game::PanelPhase::Loss);
-    CHECK(panel.litChannel() == 0);
-    CHECK(panel.takeFeedback() == game::PanelFeedback::Loss);
-    CHECK(panel.update(now + 10740U, 0));
-    CHECK(panel.phase() == game::PanelPhase::Ready);
+    CHECK(!panel.update(now + 10000U, 0));
+    CHECK(!panel.update(now + 100000U, 0));
+    CHECK(panel.phase() == game::PanelPhase::Input);
+    CHECK(panel.litChannel() == game::PanelNoChannel && !panel.whiteTarget());
+    CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+    now = press(panel, now + 100000U, 1);
+    CHECK(panel.phase() == game::PanelPhase::RoundWin);
+    CHECK(panel.takeFeedback() == game::PanelFeedback::Win);
+    CHECK(panel.update(now + 540U, 0));
+    CHECK(panel.sequenceLength() == 2);
 }
 
 void testSimonFullCapacityAndHitTiming() {
@@ -268,7 +276,7 @@ void testSimonEveryChannelAndSequencePrefix() {
     now += 540U;
     CHECK(panel.update(now, 1));
     now = release(panel, now);
-    // The timeout starts anew after feedback, not at the round's first input.
+    // Level2 remains unlimited after intermediate feedback as well.
     CHECK(!panel.update(now + 9937U, 0));
     CHECK(!panel.update(now + 9938U, uint32_t(1) << 7));
     CHECK(panel.update(now + 9968U, uint32_t(1) << 7));
@@ -616,8 +624,487 @@ void testPairedGpioPreservesOtherOwnersAndBounds() {
     lamps.setEnabled(false);
 }
 
+const game::PanelMode MemoryModes[] = {game::PanelMode::Simon, game::PanelMode::Sorrend3,
+    game::PanelMode::Sorrend4, game::PanelMode::Sorrend5};
+const game::PanelMode SearchModes[] = {game::PanelMode::Sorrend3,
+    game::PanelMode::Sorrend4, game::PanelMode::Sorrend5};
+uint8_t minimumDistractors(game::PanelMode mode) {
+    return mode == game::PanelMode::Simon ? 0 : (mode == game::PanelMode::Sorrend5 ? 8 : 4);
+}
+uint8_t distractorRange(game::PanelMode mode) {
+    return mode == game::PanelMode::Simon ? 1 : (mode == game::PanelMode::Sorrend4 ? 7 : 3);
+}
+uint32_t profileTimeout(game::PanelMode mode) {
+    return mode == game::PanelMode::Simon ? 0U : (mode == game::PanelMode::Sorrend3 ? 3000U :
+        (mode == game::PanelMode::Sorrend4 ? 2000U : 1200U));
+}
+uint32_t firstWarningAt(game::PanelMode mode) {
+    return profileTimeout(mode) - (mode == game::PanelMode::Sorrend3 ? 2000U : 1000U);
+}
+uint32_t secondWarningAt(game::PanelMode mode) {
+    return profileTimeout(mode) - (mode == game::PanelMode::Sorrend3 ? 1000U : 500U);
+}
+uint8_t searchTarget = 0, searchCount = 4;
+game::PanelMode randomProfile = game::PanelMode::Sorrend3;
+uint32_t searchCalls = 0;
+
+uint32_t searchRandom(uint32_t bound) {
+    const uint32_t index = searchCalls++;
+    CHECK(index < 13U); // Target, count, at most ten ranks, hue: no rejection loop.
+    CHECK(bound == (index == 0 ? 11U : (index == 1 ? distractorRange(randomProfile) :
+        (index < 2U + searchCount ? 12U - index : 256U))));
+    return index == 0 ? searchTarget :
+        (index == 1 ? searchCount - minimumDistractors(randomProfile) : 0U);
+}
+
+void checkSearchHidden(const game::PanelGames& panel) {
+    CHECK(!panel.whiteTarget() && panel.distractorMask() == 0);
+    CHECK(panel.frequency() == 0 && panel.lampInputMask() == 0);
+}
+
+uint32_t startSearch(game::PanelGames& panel, game::PanelMode mode, uint32_t now = 0) {
+    panel.select(mode, now, 0);
+    CHECK(panel.mode() == mode && panel.isMemory());
+    CHECK(panel.enabledMask() == 0x7ffU);
+    CHECK(panel.inputTimeoutMs() == profileTimeout(mode));
+    checkSearchHidden(panel);
+    return press(panel, now, 1U << 10);
+}
+
+uint32_t searchPlayback(game::PanelGames& panel, uint32_t now, uint32_t held = 0) {
+    CHECK(panel.phase() == game::PanelPhase::Gap && panel.sequenceLength() >= 1);
+    CHECK(panel.litChannel() == game::PanelNoChannel && panel.hue() == 0);
+    checkSearchHidden(panel);
+    CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+    CHECK(!panel.update(now + 499U, held));
+    CHECK(panel.update(now + 500U, held));
+    CHECK(panel.phase() == game::PanelPhase::Showing && panel.whiteTarget());
+    now += 500U;
+    for (uint8_t i = 0; i < panel.sequenceLength(); ++i) {
+        CHECK(panel.phase() == game::PanelPhase::Showing && panel.whiteTarget());
+        const uint8_t target = panel.litChannel();
+        const uint16_t distractors = panel.distractorMask();
+        uint8_t hues[game::PanelChannelCount];
+        for (uint8_t channel = 0; channel < game::PanelChannelCount; ++channel)
+            hues[channel] = panel.distractorHue(channel);
+        CHECK(target < game::PanelChannelCount);
+        CHECK((distractors & (1U << target)) == 0);
+        CHECK(panel.isSearch() ? distractors != 0 : distractors == 0);
+        CHECK(!panel.update(now + 499U, held));
+        CHECK(panel.litChannel() == target && panel.distractorMask() == distractors);
+        for (uint8_t channel = 0; channel < game::PanelChannelCount; ++channel)
+            CHECK(hues[channel] == panel.distractorHue(channel));
+        CHECK(panel.update(now += 500U, held));
+        CHECK(panel.phase() == game::PanelPhase::Gap);
+        CHECK(panel.litChannel() == game::PanelNoChannel && panel.hue() == 0);
+        checkSearchHidden(panel);
+        CHECK(!panel.update(now + 199U, held));
+        CHECK(panel.update(now += 200U, held));
+    }
+    CHECK(panel.phase() == game::PanelPhase::Input && panel.inputIndex() == 0);
+    CHECK(panel.litChannel() == game::PanelNoChannel && panel.hue() == 0);
+    checkSearchHidden(panel);
+    CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+    return now;
+}
+
+void checkDistractors(const game::PanelGames& panel, uint8_t target, uint8_t count) {
+    CHECK(panel.whiteTarget() && panel.litChannel() == target);
+    const uint16_t mask = panel.distractorMask();
+    CHECK((mask & ~0x7ffU) == 0 && (mask & (1U << target)) == 0);
+    uint8_t actual = 0;
+    for (uint8_t i = 0; i < game::PanelChannelCount; ++i) {
+        if (mask & (1U << i)) ++actual;
+        for (uint8_t j = 0; j < i; ++j)
+            CHECK(panel.distractorHue(i) != panel.distractorHue(j));
+    }
+    CHECK(actual == count); // Popcount proves distinct selections, not just draws.
+}
+
+void testSearchEveryTargetAndDistractorCount() {
+    for (game::PanelMode mode : SearchModes) {
+        randomProfile = mode;
+        for (searchTarget = 0; searchTarget < game::PanelChannelCount; ++searchTarget) {
+            const uint8_t minimum = minimumDistractors(mode);
+            for (searchCount = minimum; searchCount < minimum + distractorRange(mode); ++searchCount) {
+                game::PanelGames panel(searchRandom);
+                searchCalls = 0;
+                const uint32_t now = startSearch(panel, mode);
+                CHECK(searchCalls == 1); // Distractors are generated only when shown.
+                CHECK(panel.update(now + 500U, 0));
+                checkDistractors(panel, searchTarget, searchCount);
+                CHECK(searchCalls == 3U + searchCount);
+                CHECK(!panel.update(now + 999U, 0));
+                checkDistractors(panel, searchTarget, searchCount);
+                CHECK(panel.update(now + 1000U, 0));
+                checkSearchHidden(panel);
+                CHECK(panel.update(now + 1200U, 0));
+                CHECK(panel.litChannel() == game::PanelNoChannel);
+                checkSearchHidden(panel);
+                CHECK(searchCalls == 3U + searchCount);
+                panel.takeFeedback();
+                press(panel, now + 1200U, uint32_t(1) << searchTarget);
+                CHECK(panel.phase() == game::PanelPhase::RoundWin && panel.hue() == 96);
+                CHECK(panel.litChannel() == searchTarget && panel.inputIndex() == 1);
+                CHECK(panel.takeFeedback() == game::PanelFeedback::Win);
+                checkSearchHidden(panel);
+            }
+        }
+    }
+}
+
+void testSearchConstantFaultyAndNullRandom() {
+    const uint32_t values[] = {0, 1, 7, 10, UINT32_MAX};
+    for (game::PanelMode mode : SearchModes) {
+        for (uint32_t value : values) {
+            game::PanelGames panel(randomBelow);
+            chosen = value;
+            calls = 0;
+            const uint32_t now = startSearch(panel, mode);
+            CHECK(panel.update(now + 500U, 0));
+            const uint8_t count = static_cast<uint8_t>(minimumDistractors(mode) + value % distractorRange(mode));
+            CHECK(calls == 3U + count);
+            checkDistractors(panel, value % game::PanelChannelCount, count);
+            CHECK(!panel.update(now + 999U, 0));
+            checkDistractors(panel, value % game::PanelChannelCount, count);
+        }
+        game::PanelGames fallback;
+        const uint32_t now = startSearch(fallback, mode);
+        CHECK(fallback.update(now + 500U, 0));
+        checkDistractors(fallback, 0, minimumDistractors(mode));
+    }
+}
+
+void testMemoryGrowingCapacityAndPerAnswerTimers() {
+    for (game::PanelMode mode : MemoryModes) {
+        game::PanelGames panel(randomBelow);
+        chosen = 0;
+        uint32_t now = startSearch(panel, mode, UINT32_MAX - 800U);
+        for (uint8_t round = 1; round <= game::PanelSequenceCapacity; ++round) {
+            CHECK(panel.sequenceLength() == round);
+            now = searchPlayback(panel, now);
+            for (uint8_t index = 0; index < round; ++index) {
+                CHECK(panel.litChannel() == game::PanelNoChannel);
+                // Wait nearly a full *new* deadline on every answer. Intermediate
+                // green feedback is outside that deadline, even for long sequences.
+                if (panel.isSearch()) {
+                    CHECK(panel.update(now + firstWarningAt(mode), 0));
+                    CHECK(panel.takeFeedback() == game::PanelFeedback::Warning);
+                    CHECK(panel.update(now + secondWarningAt(mode), 0));
+                    CHECK(panel.takeFeedback() == game::PanelFeedback::Warning);
+                    now += panel.inputTimeoutMs() - 32U;
+                } else {
+                    CHECK(!panel.update(now + 100000U, 0));
+                    now += 100000U;
+                }
+                now = press(panel, now, 1);
+                CHECK(panel.inputIndex() == index + 1U && panel.sequenceLength() == round);
+                CHECK(panel.phase() == (index + 1U == round ?
+                    game::PanelPhase::RoundWin : game::PanelPhase::Hit));
+                CHECK(panel.hue() == 96 && panel.litChannel() == 0);
+                CHECK(panel.takeFeedback() == game::PanelFeedback::Win);
+                CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+                checkSearchHidden(panel);
+                CHECK(!panel.update(now + 539U, 0));
+                CHECK(panel.update(now += 540U, 0));
+                if (index + 1U != round) {
+                    CHECK(panel.phase() == game::PanelPhase::Input);
+                    CHECK(panel.litChannel() == game::PanelNoChannel);
+                    CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+                }
+            }
+        }
+        CHECK(panel.phase() == game::PanelPhase::Ready && panel.sequenceLength() == 0);
+        CHECK(panel.inputIndex() == 0);
+        checkSearchHidden(panel);
+        now = press(panel, now, 1);
+        CHECK(panel.sequenceLength() == 1 && panel.phase() == game::PanelPhase::Gap);
+    }
+}
+
+void testMemoryPrefixAndPerStepDistractions() {
+    for (game::PanelMode mode : MemoryModes) {
+        game::PanelGames panel(randomBelow);
+        chosen = 2;
+        uint32_t now = startSearch(panel, mode);
+        chosen = 0;
+        CHECK(panel.update(now + 500U, 0));
+        CHECK(panel.whiteTarget() && panel.litChannel() == 2);
+        if (panel.isSearch()) checkDistractors(panel, 2, minimumDistractors(mode));
+        CHECK(panel.update(now + 1000U, 0));
+        CHECK(panel.update(now + 1200U, 0));
+        CHECK(panel.litChannel() == game::PanelNoChannel);
+        now = press(panel, now + 1200U, 1U << 2);
+        CHECK(panel.takeFeedback() == game::PanelFeedback::Win);
+        chosen = 7; // Only append a new target; never overwrite the prefix.
+        CHECK(panel.update(now += 540U, 0));
+        CHECK(panel.sequenceLength() == 2);
+        const uint32_t beforePlayback = calls;
+        chosen = 0;
+        CHECK(panel.update(now + 500U, 0));
+        CHECK(panel.whiteTarget() && panel.litChannel() == 2);
+        if (panel.isSearch()) checkDistractors(panel, 2, minimumDistractors(mode));
+        CHECK(calls == beforePlayback + (panel.isSearch() ? minimumDistractors(mode) + 2U : 0U));
+        const uint32_t firstCalls = calls;
+        const uint16_t firstMask = panel.distractorMask();
+        const uint8_t firstHue = panel.distractorHue(0);
+        chosen = 1;
+        CHECK(!panel.update(now + 999U, 0));
+        CHECK(panel.distractorMask() == firstMask && panel.distractorHue(0) == firstHue);
+        CHECK(calls == firstCalls); // No random calls or repaint inside Showing.
+        CHECK(panel.update(now + 1000U, 0));
+        checkSearchHidden(panel);
+        CHECK(panel.update(now + 1200U, 0));
+        CHECK(panel.whiteTarget() && panel.litChannel() == 7);
+        if (panel.isSearch()) {
+            checkDistractors(panel, 7, minimumDistractors(mode) + 1U);
+            CHECK(panel.distractorHue(0) != firstHue);
+            CHECK(panel.distractorMask() != firstMask);
+            CHECK(calls == firstCalls + minimumDistractors(mode) + 3U);
+        } else CHECK(calls == firstCalls);
+        CHECK(panel.update(now + 1700U, 0));
+        CHECK(panel.update(now + 1900U, 0));
+        now += 1900U;
+        CHECK(panel.litChannel() == game::PanelNoChannel);
+        checkSearchHidden(panel);
+        now = press(panel, now, 1U << 2);
+        CHECK(panel.phase() == game::PanelPhase::Hit && panel.inputIndex() == 1);
+        CHECK(panel.takeFeedback() == game::PanelFeedback::Win);
+        CHECK(!panel.update(now + 539U, 1U << 2));
+        CHECK(panel.update(now += 540U, 1U << 2));
+        CHECK(panel.phase() == game::PanelPhase::Input && panel.litChannel() == game::PanelNoChannel);
+        CHECK(!panel.update(now + 40U, 1U << 2)); // Intermediate feedback also gates holds.
+        now = release(panel, now + 40U);
+        now = press(panel, now, 1U << 7);
+        CHECK(panel.phase() == game::PanelPhase::RoundWin && panel.inputIndex() == 2);
+        CHECK(panel.takeFeedback() == game::PanelFeedback::Win);
+        checkSearchHidden(panel);
+    }
+}
+
+void testSearchWrongChordDeadlineAndRollover() {
+    const uint32_t boots[] = {0, UINT32_MAX - 2000U};
+    for (game::PanelMode mode : SearchModes) {
+        for (uint32_t boot : boots) {
+            for (uint8_t scenario = 0; scenario < 6; ++scenario) {
+                game::PanelGames panel;
+                uint32_t now = searchPlayback(panel, startSearch(panel, mode, boot));
+                uint32_t mask = scenario == 0 ? 2U : (scenario == 1 ? 3U : 0U);
+                if (scenario < 2) now = press(panel, now, mask);
+                else {
+                    // Answer just before, exactly on, or after the deadline; or silence.
+                    CHECK(panel.update(now + firstWarningAt(mode), 0));
+                    CHECK(panel.takeFeedback() == game::PanelFeedback::Warning);
+                    CHECK(panel.update(now + secondWarningAt(mode), 0));
+                    CHECK(panel.takeFeedback() == game::PanelFeedback::Warning);
+                    const uint32_t deadline = now + panel.inputTimeoutMs();
+                    if (scenario == 2) {
+                        CHECK(!panel.update(deadline - 1U, 0));
+                        now = deadline;
+                        CHECK(panel.update(now, 0));
+                    } else {
+                        mask = 1;
+                        const uint32_t answerAt = deadline + (scenario == 3 ? UINT32_MAX :
+                            (scenario == 4 ? 0U : 1U));
+                        CHECK(!panel.update(answerAt - 30U, mask));
+                        CHECK(!panel.update(deadline - (scenario == 3 ? 2U : 1U), mask));
+                        now = answerAt;
+                        CHECK(panel.update(now, mask));
+                    }
+                }
+                const bool won = scenario == 3;
+                CHECK(panel.phase() == (won ? game::PanelPhase::RoundWin : game::PanelPhase::Loss));
+                CHECK(panel.hue() == (won ? 96 : 0));
+                CHECK(panel.takeFeedback() == (won ? game::PanelFeedback::Win : game::PanelFeedback::Loss));
+                CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+                checkSearchHidden(panel);
+                if (won) continue;
+                CHECK(!panel.update(now + 739U, mask));
+                CHECK(panel.update(now + 740U, mask));
+                CHECK(panel.phase() == game::PanelPhase::Ready && panel.mode() == mode);
+                CHECK(panel.sequenceLength() == 0 && panel.litChannel() == game::PanelNoChannel);
+                checkSearchHidden(panel);
+                CHECK(!panel.update(now + 1000U, mask));
+                now = release(panel, now + 1000U);
+                press(panel, now, 1);
+                CHECK(panel.phase() == game::PanelPhase::Gap && panel.sequenceLength() == 1);
+            }
+        }
+    }
+}
+
+void testSearchHeldPlaybackAndFreshStart() {
+    for (game::PanelMode mode : MemoryModes) {
+        for (bool partial : {false, true}) {
+            game::PanelGames panel;
+            panel.select(mode, 0, 1);
+            CHECK(!panel.update(100, 1)); // Selection-held cannot start.
+            uint32_t now = release(panel, 100);
+            CHECK(!panel.update(now + 1U, 1UL << 31));
+            CHECK(!panel.update(now + 31U, 1UL << 31));
+            now = press(panel, now + 31U, 1);
+            if (!partial) now = searchPlayback(panel, now, 1);
+            else {
+                CHECK(panel.update(now + 500U, 0));
+                CHECK(panel.update(now + 1000U, 0));
+                CHECK(!panel.update(now + 1190U, 1));
+                CHECK(panel.update(now + 1200U, 1));
+                now += 1200U;
+                panel.takeFeedback();
+            }
+            CHECK(!panel.update(now + 100U, 1));
+            CHECK(panel.phase() == game::PanelPhase::Input && panel.inputIndex() == 0);
+            now = release(panel, now + 100U);
+            now = press(panel, now, 1);
+            CHECK(panel.phase() == game::PanelPhase::RoundWin);
+            CHECK(panel.takeFeedback() == game::PanelFeedback::Win);
+            panel.select(mode, now, 1);
+            CHECK(panel.phase() == game::PanelPhase::Ready && panel.sequenceLength() == 0);
+            checkSearchHidden(panel);
+            CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+            CHECK(!panel.update(now + 100U, 1));
+            now = release(panel, now + 100U);
+            press(panel, now, 1);
+            CHECK(panel.phase() == game::PanelPhase::Gap);
+        }
+    }
+}
+
+void testSearchReselectAndCancelEveryPhase() {
+    const game::PanelPhase phases[] = {game::PanelPhase::Ready, game::PanelPhase::Gap,
+        game::PanelPhase::Showing, game::PanelPhase::Input,
+        game::PanelPhase::Hit, game::PanelPhase::RoundWin, game::PanelPhase::Loss};
+    for (game::PanelMode mode : MemoryModes) {
+        for (game::PanelPhase phase : phases) {
+                for (game::PanelMode next : {mode, game::PanelMode::Disabled, game::PanelMode::Simon,
+                    game::PanelMode::Sorrend3, game::PanelMode::Sorrend4, game::PanelMode::Sorrend5,
+                    game::PanelMode::Random, game::PanelMode::Random2, game::PanelMode::Flasher}) {
+                game::PanelGames panel;
+                uint32_t now = 0;
+                panel.select(mode, now, 0);
+                if (phase != game::PanelPhase::Ready) {
+                    now = press(panel, now, 1);
+                    if (phase == game::PanelPhase::Showing) {
+                        now += 500U;
+                        CHECK(panel.update(now, 0));
+                    } else if (phase != game::PanelPhase::Gap) {
+                        now = searchPlayback(panel, now);
+                        if (phase == game::PanelPhase::Hit) {
+                            now = press(panel, now, 1);
+                            // Consume the completed round's event before replay;
+                            // leave the later Hit event pending for cancellation.
+                            CHECK(panel.takeFeedback() == game::PanelFeedback::Win);
+                            CHECK(panel.update(now += 540U, 0));
+                            now = searchPlayback(panel, now);
+                            now = press(panel, now, 1);
+                        } else if (phase != game::PanelPhase::Input)
+                            now = press(panel, now, phase == game::PanelPhase::RoundWin ? 1 : 2);
+                        else if (panel.isSearch())
+                            CHECK(panel.update(now += firstWarningAt(mode), 0)); // Pending warning must clear too.
+                    }
+                }
+                CHECK(panel.phase() == phase);
+                panel.select(next, now, 1);
+                CHECK(panel.mode() == next && panel.sequenceLength() == 0 && panel.inputIndex() == 0);
+                CHECK(panel.phase() == (next == game::PanelMode::Disabled ?
+                    game::PanelPhase::Disabled : game::PanelPhase::Ready));
+                CHECK(panel.litChannel() == game::PanelNoChannel && panel.hue() == 0);
+                checkSearchHidden(panel);
+                CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+                CHECK(!panel.update(now + 10000U, 1));
+            }
+        }
+    }
+}
+
+void testSearchWarningBoundariesPriorityAndLateUpdates() {
+    for (game::PanelMode mode : SearchModes) {
+        const uint32_t first = firstWarningAt(mode), second = secondWarningAt(mode);
+        const uint32_t timeout = profileTimeout(mode);
+        // Second boot places Input just before wrap, so warnings/deadline cross it.
+        for (uint32_t boot : {0U, UINT32_MAX - 1300U}) {
+            game::PanelGames exact;
+            const uint32_t entered = searchPlayback(exact, startSearch(exact, mode, boot));
+            CHECK(!exact.update(entered + first - 1U, 0));
+            CHECK(exact.takeFeedback() == game::PanelFeedback::None);
+            CHECK(exact.update(entered + first, 0));
+            CHECK(exact.takeFeedback() == game::PanelFeedback::Warning);
+            CHECK(exact.takeFeedback() == game::PanelFeedback::None);
+            CHECK(!exact.update(entered + first, 0));
+            CHECK(!exact.update(entered + second - 1U, 0));
+            CHECK(exact.update(entered + second, 0));
+            CHECK(exact.takeFeedback() == game::PanelFeedback::Warning);
+            CHECK(!exact.update(entered + second, 0));
+            CHECK(!exact.update(entered + timeout - 1U, 0));
+            CHECK(exact.update(entered + timeout, 0));
+            CHECK(exact.takeFeedback() == game::PanelFeedback::Loss);
+            for (uint32_t delay : {second, timeout - 1U, timeout, timeout + 10000U}) {
+                game::PanelGames panel;
+                const uint32_t now = searchPlayback(panel, startSearch(panel, mode, boot));
+                CHECK(panel.update(now + delay, 0));
+                CHECK(panel.takeFeedback() == (delay < timeout ?
+                    game::PanelFeedback::Warning : game::PanelFeedback::Loss));
+                CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+                CHECK(!panel.update(now + delay, 0)); // Coalesced, never catch-up beeps.
+                checkSearchHidden(panel);
+                if (delay < timeout) {
+                    CHECK(panel.litChannel() == game::PanelNoChannel);
+                    CHECK(!panel.update(now + timeout - 1U, 0));
+                    CHECK(panel.update(now + timeout, 0));
+                    CHECK(panel.takeFeedback() == game::PanelFeedback::Loss);
+                }
+            }
+            for (uint32_t mask : {1U, 2U, 3U}) {
+                for (uint32_t elapsed : {first, second, timeout}) {
+                    game::PanelGames panel;
+                    const uint32_t now = searchPlayback(panel, startSearch(panel, mode, boot));
+                    if (elapsed > first) {
+                        CHECK(panel.update(now + first, 0));
+                        CHECK(panel.takeFeedback() == game::PanelFeedback::Warning);
+                    }
+                    if (elapsed > second) {
+                        CHECK(panel.update(now + second, 0));
+                        CHECK(panel.takeFeedback() == game::PanelFeedback::Warning);
+                    }
+                    CHECK(!panel.update(now + elapsed - 30U, mask));
+                    CHECK(panel.update(now + elapsed, mask)); // Answer beats warning; deadline beats both.
+                    CHECK(panel.takeFeedback() == (mask == 1 && elapsed < timeout ?
+                        game::PanelFeedback::Win : game::PanelFeedback::Loss));
+                    CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+                    checkSearchHidden(panel);
+                }
+            }
+        }
+        game::PanelGames panel;
+        uint32_t now = startSearch(panel, mode);
+        CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+        CHECK(panel.update(now += 100000U, 0));
+        CHECK(panel.phase() == game::PanelPhase::Showing);
+        CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+        CHECK(!panel.update(now, 0));
+        CHECK(panel.update(now += 100000U, 0));
+        CHECK(panel.phase() == game::PanelPhase::Gap);
+        CHECK(panel.takeFeedback() == game::PanelFeedback::None);
+        CHECK(panel.update(now += 100000U, 0));
+        CHECK(panel.phase() == game::PanelPhase::Input);
+        CHECK(panel.takeFeedback() == game::PanelFeedback::None); // No warning at entry.
+        CHECK(!panel.update(now, 0));
+        CHECK(!panel.update(now + first - 1U, 0));
+        CHECK(panel.update(now + first, 0)); // Deadline starts at actual Input entry.
+        CHECK(panel.takeFeedback() == game::PanelFeedback::Warning);
+    }
+}
+
 struct Test { const char* name; void (*run)(); };
 const Test Tests[] = {
+    {"Sorrend3/4/5 all targets and profile-specific unique distractors", testSearchEveryTargetAndDistractorCount},
+    {"Sorrend3/4/5 bounded constant, faulty and null RNG", testSearchConstantFaultyAndNullRandom},
+    {"Sorrend2..5 growing 1..32 memory and per-answer feedback/deadlines", testMemoryGrowingCapacityAndPerAnswerTimers},
+    {"Sorrend2..5 preserved prefix, per-step distractions and intermediate hold gating", testMemoryPrefixAndPerStepDistractions},
+    {"Sorrend3/4/5 wrong, chord, exact deadlines and rollover", testSearchWrongChordDeadlineAndRollover},
+    {"Sorrend2..5 fresh start and stable/partial playback holds", testSearchHeldPlaybackAndFreshStart},
+    {"Sorrend2..5 reselection and cancellation in every phase", testSearchReselectAndCancelEveryPhase},
+    {"Sorrend3/4/5 warning boundaries, priority, take-once and late updates", testSearchWarningBoundariesPriorityAndLateUpdates},
     {"Random2 all inputs, chords, duration and hold", testRandom2AllInputsAndChords},
     {"Random2 disco beats, retrigger, delayed updates and rollover", testRandom2BeatsRetriggerAndRollover},
     {"Random2 bounce, fresh selection and cancellation", testRandom2BounceReselectAndCancel},
@@ -633,9 +1120,9 @@ const Test Tests[] = {
     {"panel Simon start consumption and held playback", testSimonStartAndPlaybackHeldIsolation},
     {"panel Simon partially debounced playback press", testSimonPartialPlaybackPressDiscarded},
     {"panel Simon wrong/multiple press and loss rearm", testSimonWrongMultipleAndRearm},
-    {"panel Simon timeout and rollover", testSimonTimeoutAndRollover},
+    {"panel Simon unlimited input and rollover", testSimonUnlimitedInputAndRollover},
     {"panel Simon all 32 rounds and per-answer feedback", testSimonFullCapacityAndHitTiming},
-    {"panel Simon all channels, preserved prefix and renewed timeout", testSimonEveryChannelAndSequencePrefix},
+    {"panel Simon all channels, preserved prefix and unlimited input", testSimonEveryChannelAndSequencePrefix},
     {"panel bounded late-update transitions", testSimonBoundedLateUpdates},
     {"panel selection cancellation and fallback", testSelectionCancelsEveryPhase}
 };

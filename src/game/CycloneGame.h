@@ -11,8 +11,8 @@ constexpr uint8_t ScoreLedCount = 5;
 constexpr uint8_t TotalLedCount = GameLedCount + ScoreLedCount;
 constexpr uint8_t LevelCount = 4;
 
-// Preserve the original target zone; every target and its widest (5-pixel)
-// window fit within the game strip, never in the score section.
+// Preserve the original target zone. Nine-pixel profiles clamp the picked
+// centre to at least 4 so their complete window fits on the game strip.
 constexpr uint8_t MinimumTarget = 3;
 constexpr uint8_t MaximumTarget = 46;
 constexpr uint32_t IntroPauseMs = 500;
@@ -26,6 +26,7 @@ constexpr uint32_t FeedbackDurationMs = FeedbackPhaseMs * FeedbackPhaseCount;
 
 static_assert(MinimumTarget >= 2, "Target window would underflow");
 static_assert(MaximumTarget + 2 < GameLedCount, "Target window would overflow");
+static_assert(MaximumTarget + 4 < GameLedCount, "Nine-pixel window would overflow");
 static_assert(ScoreLedCount >= LevelCount + 1, "Need a final-victory indicator");
 
 enum class State : uint8_t {
@@ -46,6 +47,16 @@ public:
 
     void setEnabled(bool enabled, uint32_t now, bool buttonPressed = false);
     void restart(uint32_t now, bool buttonPressed = false);
+    // Select 2..5 only while Disabled/Idle; invalid or active changes fail
+    // without side effects. Default 0 preserves the legacy four-stage profile.
+    bool setMenuLevel(uint8_t menuLevel);
+    uint8_t menuLevel() const { return menuLevel_; }
+    uint32_t movementInterval() const { return movementInterval(menuLevel_, level_); }
+    uint8_t targetWindowSize() const { return targetWindowSize(menuLevel_, level_); }
+    // Renderer must use this same predicate, not the legacy symmetric radius.
+    bool isTargetPixel(uint8_t position) const {
+        return isHit(menuLevel_, level_, position, target_);
+    }
     // Returns true only when the LED frame needs updating.
     bool update(uint32_t now, bool buttonPressed);
 
@@ -61,6 +72,10 @@ public:
     static uint8_t targetRadius(uint8_t level);
     static uint32_t movementInterval(uint8_t level);
     static bool isHit(uint8_t level, uint8_t position, uint8_t target);
+    // menuLevel 0 is legacy; 2..5 are workbook profiles; other values fail closed.
+    static uint8_t targetWindowSize(uint8_t menuLevel, uint8_t level);
+    static uint32_t movementInterval(uint8_t menuLevel, uint8_t level);
+    static bool isHit(uint8_t menuLevel, uint8_t level, uint8_t position, uint8_t target);
 
 private:
     void startLevel(uint8_t level, uint32_t now);
@@ -72,6 +87,7 @@ private:
     uint32_t stateStartedAt_ = 0;
     uint32_t lastMoveAt_ = 0;
     uint8_t level_ = 0;
+    uint8_t menuLevel_ = 0;
     uint8_t position_ = 0;
     uint8_t target_ = MinimumTarget;
     uint8_t feedbackPhase_ = 0;

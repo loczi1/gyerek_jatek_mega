@@ -6,6 +6,14 @@
 
 namespace board {
 
+constexpr generated::pins::ControlId MetalControls[] = {
+    generated::pins::ControlId::Sw01Metal1,
+    generated::pins::ControlId::Sw02Metal2,
+    generated::pins::ControlId::Sw03Metal3,
+    generated::pins::ControlId::Sw04Metal4,
+    generated::pins::ControlId::Sw05Metal5,
+};
+
 // Input order: left three, bottom five BTN07..11, right three.
 constexpr generated::pins::ControlId PanelControls[] = {
     generated::pins::ControlId::Btn01LeftBlue1,

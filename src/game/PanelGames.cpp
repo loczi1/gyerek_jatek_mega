@@ -44,6 +44,7 @@ void PanelGames::enter(PanelPhase phase, uint32_t now) {
     hue_ = 0;
     frequency_ = 0;
     lampInputMask_ = 0;
+    if (phase == PanelPhase::Input) warnings_ = 0;
 }
 
 void PanelGames::ready(uint32_t now, uint32_t pressedMask) {
@@ -52,14 +53,14 @@ void PanelGames::ready(uint32_t now, uint32_t pressedMask) {
     inputIndex_ = 0;
     showingIndex_ = 0;
     distractors_ = 0;
-    secondWarning_ = false;
+    warnings_ = 0;
     resetButtons(now, pressedMask);
 }
 
 void PanelGames::select(PanelMode mode, uint32_t now, uint32_t pressedMask) {
     mode_ = (mode == PanelMode::Random || mode == PanelMode::Simon ||
              mode == PanelMode::Flasher || mode == PanelMode::Random2 ||
-             mode == PanelMode::Sorrend4 || mode == PanelMode::Sorrend5)
+             mode == PanelMode::Sorrend3 || mode == PanelMode::Sorrend4 || mode == PanelMode::Sorrend5)
         ? mode : PanelMode::Disabled;
     feedback_ = PanelFeedback::None;
     ready(now, pressedMask);
@@ -68,13 +69,28 @@ void PanelGames::select(PanelMode mode, uint32_t now, uint32_t pressedMask) {
 
 void PanelGames::appendRound(uint32_t now) {
     // Flasher replaces its single target; it never grows or replays a sequence.
-    if (mode_ == PanelMode::Flasher || isSearch()) sequenceLength_ = 0;
+    if (mode_ == PanelMode::Flasher) sequenceLength_ = 0;
     sequence_[sequenceLength_++] = static_cast<uint8_t>(pick(PanelChannelCount));
     distractors_ = 0;
+    inputIndex_ = 0;
+    showingIndex_ = 0;
+    // Gap with showingIndex=0 denotes the initial 500 ms dark pause.
+    enter(PanelPhase::Gap, now);
+}
+
+void PanelGames::show(uint32_t now) {
+    enter(PanelPhase::Showing, now);
+    litChannel_ = sequence_[showingIndex_];
+    hue_ = static_cast<uint8_t>(1U + litChannel_ * 20U);
+    distractors_ = 0;
     if (isSearch()) {
+        // Refresh on each shown step, never within a Showing frame. Exclude
+        // that step's white target; hide all lamps in Input to preserve memory.
         // Select without replacement in bounded time, even with a constant RNG.
-        uint16_t available = static_cast<uint16_t>(SimonMask & ~(uint32_t(1) << sequence_[0]));
-        const uint8_t count = static_cast<uint8_t>(3U + pick(8));
+        uint16_t available = static_cast<uint16_t>(SimonMask & ~(uint32_t(1) << litChannel_));
+        const uint8_t minimum = mode_ == PanelMode::Sorrend5 ? 8U : 4U;
+        const uint8_t range = mode_ == PanelMode::Sorrend4 ? 7U : 3U;
+        const uint8_t count = static_cast<uint8_t>(minimum + pick(range));
         for (uint8_t i = 0; i < count; ++i) {
             uint8_t rank = static_cast<uint8_t>(pick(PanelChannelCount - 1U - i));
             for (uint8_t channel = 0; channel < PanelChannelCount; ++channel) {
@@ -88,16 +104,6 @@ void PanelGames::appendRound(uint32_t now) {
         }
         distractorHue_ = static_cast<uint8_t>(pick(256));
     }
-    inputIndex_ = 0;
-    showingIndex_ = 0;
-    // Gap with showingIndex=0 denotes the initial 500 ms dark pause.
-    enter(PanelPhase::Gap, now);
-}
-
-void PanelGames::show(uint32_t now) {
-    enter(PanelPhase::Showing, now);
-    litChannel_ = sequence_[showingIndex_];
-    hue_ = static_cast<uint8_t>(1U + litChannel_ * 20U);
 }
 
 void PanelGames::lose(uint32_t now, uint8_t channel) {
@@ -176,28 +182,32 @@ bool PanelGames::update(uint32_t now, uint32_t pressedMask) {
             show(now);
         } else {
             enter(PanelPhase::Input, now);
-            if (mode_ == PanelMode::Flasher || isSearch()) {
+            if (mode_ == PanelMode::Flasher) {
                 // Keep the current target visible while waiting: no memory task.
                 litChannel_ = sequence_[0];
                 hue_ = static_cast<uint8_t>(1U + litChannel_ * 20U);
             }
             // Discard both stable and partially debounced playback presses.
             resetButtons(now, pressedMask);
-            secondWarning_ = false;
-            if (mode_ == PanelMode::Sorrend5) feedback_ = PanelFeedback::Warning;
         }
         return true;
     case PanelPhase::Input:
         // Timeout wins over a press arriving at or after the deadline.
-        if (elapsed >= inputTimeoutMs()) {
+        if (inputTimeoutMs() != 0 && elapsed >= inputTimeoutMs()) {
             lose(now, sequence_[inputIndex_]);
             return true;
         }
         if (!rising) {
-            if (mode_ == PanelMode::Sorrend5 && !secondWarning_ && elapsed >= 1000U) {
-                secondWarning_ = true;
-                feedback_ = PanelFeedback::Warning;
-                return true;
+            if (isSearch()) {
+                const uint32_t firstRemaining = mode_ == PanelMode::Sorrend3 ? 2000U : 1000U;
+                const uint32_t secondRemaining = mode_ == PanelMode::Sorrend3 ? 1000U : 500U;
+                const uint8_t due = elapsed >= inputTimeoutMs() - secondRemaining ? 3U :
+                    (elapsed >= inputTimeoutMs() - firstRemaining ? 1U : 0U);
+                if (due != warnings_) {
+                    warnings_ = due; // Coalesce missed warnings; no catch-up burst.
+                    feedback_ = PanelFeedback::Warning;
+                    return true;
+                }
             }
             return false;
         }

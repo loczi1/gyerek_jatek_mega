@@ -127,10 +127,55 @@
       "parentId": 32,
       "type": "actionMenu",
       "item": {
+        "name": "Cyclon",
+        "variableName": "Cyclon3",
+        "functionName": "CyclonGame3",
+        "id": 42,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 32,
+      "type": "actionMenu",
+      "item": {
         "name": "Sorrend",
         "variableName": "Sorrend3",
         "functionName": "SorrendGame3",
         "id": 39,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 32,
+      "type": "actionMenu",
+      "item": {
+        "name": "Kapcsolozar",
+        "variableName": "Kapcsolozar3",
+        "functionName": "LockGame3",
+        "id": 45,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 32,
+      "type": "actionMenu",
+      "item": {
+        "name": "Parbaj",
+        "variableName": "Parbaj",
+        "functionName": "DuelGame",
+        "id": 47,
         "eepromAddress": -1,
         "readOnly": false,
         "localOnly": false,
@@ -157,10 +202,40 @@
       "parentId": 33,
       "type": "actionMenu",
       "item": {
+        "name": "Cyclon",
+        "variableName": "Cyclon4",
+        "functionName": "CyclonGame4",
+        "id": 43,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 33,
+      "type": "actionMenu",
+      "item": {
         "name": "Sorrend",
         "variableName": "Sorrend4",
         "functionName": "SorrendGame4",
         "id": 40,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 33,
+      "type": "actionMenu",
+      "item": {
+        "name": "Kapcsolozar",
+        "variableName": "Kapcsolozar4",
+        "functionName": "LockGame4",
+        "id": 46,
         "eepromAddress": -1,
         "readOnly": false,
         "localOnly": false,
@@ -176,6 +251,21 @@
         "name": "Szint 5",
         "variableName": "Level5",
         "id": 34,
+        "eepromAddress": -1,
+        "readOnly": false,
+        "localOnly": false,
+        "visible": true,
+        "staticDataInRAM": false
+      }
+    },
+    {
+      "parentId": 34,
+      "type": "actionMenu",
+      "item": {
+        "name": "Cyclon",
+        "variableName": "Cyclon5",
+        "functionName": "CyclonGame5",
+        "id": 44,
         "eepromAddress": -1,
         "readOnly": false,
         "localOnly": false,

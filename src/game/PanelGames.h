@@ -13,7 +13,8 @@ constexpr uint8_t PanelSequenceCapacity = 32;
 constexpr uint32_t Random2DurationMs = 1200;
 constexpr uint32_t Random2BeatMs = 150;
 
-enum class PanelMode : uint8_t { Disabled, Random, Simon, Flasher, Random2, Sorrend4, Sorrend5 };
+// Append new modes to preserve the existing numeric identities. Simon is Szint2.
+enum class PanelMode : uint8_t { Disabled, Random, Simon, Flasher, Random2, Sorrend4, Sorrend5, Sorrend3 };
 enum class PanelPhase : uint8_t {
     Disabled, Ready, Showing, Gap, Input, Hit, RoundWin, Loss
 };
@@ -51,16 +52,24 @@ public:
     uint8_t sequenceLength() const { return sequenceLength_; }
     uint8_t inputIndex() const { return inputIndex_; }
     uint32_t enabledMask() const;
-    bool isSearch() const { return mode_ == PanelMode::Sorrend4 || mode_ == PanelMode::Sorrend5; }
+    bool isMemory() const { return mode_ == PanelMode::Simon || isSearch(); }
+    // Compatibility query: now denotes memory profiles with distractors, not search games.
+    bool isSearch() const {
+        return mode_ == PanelMode::Sorrend3 || mode_ == PanelMode::Sorrend4 || mode_ == PanelMode::Sorrend5;
+    }
     bool whiteTarget() const {
-        return isSearch() && (phase_ == PanelPhase::Showing || phase_ == PanelPhase::Input);
+        return isMemory() && phase_ == PanelPhase::Showing;
     }
     uint16_t distractorMask() const { return whiteTarget() ? distractors_ : 0; }
     uint8_t distractorHue(uint8_t channel) const {
         return static_cast<uint8_t>(distractorHue_ + channel * 23U);
     }
     uint32_t inputTimeoutMs() const {
-        return mode_ == PanelMode::Sorrend5 ? 2000U : (mode_ == PanelMode::Sorrend4 ? 5000U : 10000U);
+        // Zero explicitly means unlimited; only Flasher retains the 10-second limit.
+        return mode_ == PanelMode::Simon ? 0U :
+            (mode_ == PanelMode::Sorrend3 ? 3000U :
+            (mode_ == PanelMode::Sorrend4 ? 2000U :
+            (mode_ == PanelMode::Sorrend5 ? 1200U : 10000U)));
     }
 
 private:
@@ -82,7 +91,7 @@ private:
     uint8_t discoStart_ = 0;
     uint16_t distractors_ = 0;
     uint8_t distractorHue_ = 0;
-    bool secondWarning_ = false;
+    uint8_t warnings_ = 0;
 
     uint32_t pick(uint32_t bound);
     void resetButtons(uint32_t now, uint32_t pressedMask);
